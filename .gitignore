@@ -1,0 +1,24 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Stonecutter
+versions/*/build/
+versions/*/src/
+.stonecutter/
+
+# Loom / run environments
+run/
+.architectury-transformer/
+remappedSrc/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.eclipse/
+bin/
+
+# Kotlin compiler session files (build-logic)
+.kotlin/

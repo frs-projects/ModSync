@@ -1,0 +1,61 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: core (no Minecraft)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Loom refuses to set up Minecraft on a daemon older than the version
+          # Minecraft itself requires, so the daemon runs on the newest in the matrix.
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :core:test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-test-results
+          path: core/build/reports/tests/test/
+
+  matrix:
+    name: ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - 1.20.1-fabric
+          - 1.20.1-forge
+          - 1.21.1-fabric
+          - 1.21.1-neoforge
+          - 1.21.4-fabric
+          - 1.21.4-neoforge
+          - 1.21.8-fabric
+          - 1.21.8-neoforge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      # `check` runs verifyModMetadata, which is the guard against shipping a jar
+      # that builds but contains no loader metadata.
+      - run: ./gradlew ":${{ matrix.node }}:build" ":${{ matrix.node }}:check"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modsync-${{ matrix.node }}
+          path: versions/${{ matrix.node }}/build/libs/modsync-*.jar

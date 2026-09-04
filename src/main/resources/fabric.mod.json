@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "${id}",
+  "version": "${version}",
+  "name": "${name}",
+  "description": "${description}",
+  "authors": ["${authors}"],
+  "contact": { "sources": "${source}" },
+  "license": "${license}",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["${group}.ModSyncFabric"],
+    "client": ["${group}.ModSyncFabricClient"]
+  },
+  "depends": {
+    "fabricloader": ">=${fabric_loader}",
+    "minecraft": "${minecraft_range_fabric}",
+    "java": ">=${java}"
+  }
+}
