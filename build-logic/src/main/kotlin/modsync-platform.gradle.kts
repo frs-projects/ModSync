@@ -81,6 +81,7 @@ tasks.named<ProcessResources>("processResources") {
         "source" to prop("mod.source"),
         "java" to nodeJava.toString(),
         "minecraft" to (propOrNull("deps.minecraft") ?: ""),
+        "pack_format" to (propOrNull("deps.pack_format") ?: "15"),
         "minecraft_range_fabric" to (propOrNull("deps.minecraft.range.fabric") ?: ""),
         "minecraft_range_forgelike" to (propOrNull("deps.minecraft.range.forgelike") ?: ""),
         "fabric_loader" to (propOrNull("deps.fabric_loader") ?: ""),
@@ -95,7 +96,10 @@ tasks.named<ProcessResources>("processResources") {
     // Only this node's loader metadata is templated; the others would fail to
     // expand (their tokens are empty here) and would be dead weight in the jar.
     exclude(allMetadata.filter { it != expectedMetadata })
-    filesMatching(expectedMetadata) { expand(tokens) }
+    // pack.mcmeta is loader-agnostic but mandatory: without it Forge cannot build
+    // a ResourcePackInfo for the mod file and aborts the client with a full-screen
+    // error, while Fabric/NeoForge only log "Missing metadata in pack".
+    filesMatching(listOf(expectedMetadata, "pack.mcmeta")) { expand(tokens) }
 }
 
 
@@ -116,8 +120,13 @@ val verifyModMetadata by tasks.registering {
                 "$f is missing $expectedMetadata — it would load as an empty mod. " +
                     "Check processResources for node '${project.name}'."
             }
+            requireNotNull(zip.getEntry("pack.mcmeta")) {
+                "$f is missing pack.mcmeta — Forge would reject it with " +
+                    "'failed to load a valid ResourcePackInfo'. " +
+                    "Check processResources for node '${project.name}'."
+            }
         }
-        logger.lifecycle("verifyModMetadata: ${f.name} contains $expectedMetadata")
+        logger.lifecycle("verifyModMetadata: ${f.name} contains $expectedMetadata + pack.mcmeta")
     }
 }
 
