@@ -41,7 +41,8 @@ class ModSyncConfigTest {
             List.of("my-cdn.example"),
             8,
             Map.of("mc.example.net:25565", "https://example.net/manifest.json"),
-            false);
+            false,
+            "cf-secret-key");
 
         Path file = dir.resolve("modsync.json");
         config.save(file);

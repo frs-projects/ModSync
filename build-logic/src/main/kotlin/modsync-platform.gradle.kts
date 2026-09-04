@@ -47,11 +47,6 @@ dependencies {
 }
 
 tasks.named<Jar>("jar") {
-    from(project(":core").layout.buildDirectory.dir("classes/java/main")) {
-        exclude("**/*.kotlin_metadata")
-    }
-    dependsOn(":core:classes")
-
     manifest.attributes(
         "Specification-Title" to prop("mod.name"),
         "Implementation-Version" to prop("mod.version"),
@@ -70,6 +65,18 @@ val expectedMetadata: String = when (loader) {
 // Mod metadata is templated from gradle.properties so version/id/deps live in
 // exactly one place per node.
 tasks.named<ProcessResources>("processResources") {
+    // :core's classes are folded in here rather than in the jar task, because this directory
+    // is also what the dev runs load the mod from. FML puts a mod in its own module layer and
+    // unions only the node's own classes/resources dirs into it, so with :core merely on the
+    // runtime classpath anything touching it dies with NoClassDefFoundError under
+    // runClient/runServer. Shipped jars were never affected, which is why this stayed hidden
+    // until the first :core class was loaded at runtime instead of inlined as a constant.
+    // (Fabric's Knot classloader is flat and never needed this.)
+    from(project(":core").layout.buildDirectory.dir("classes/java/main")) {
+        exclude("**/*.kotlin_metadata")
+    }
+    dependsOn(":core:classes")
+
     val tokens = mapOf(
         "id" to prop("mod.id"),
         "name" to prop("mod.name"),
@@ -88,6 +95,10 @@ tasks.named<ProcessResources>("processResources") {
         "fabric_api" to (propOrNull("deps.fabric_api") ?: ""),
         "neoforge" to (propOrNull("deps.neoforge") ?: ""),
         "neoforge_range" to (propOrNull("deps.neoforge.range") ?: ""),
+        // The javafml language-provider version, which is NOT the NeoForge version: NeoForge
+        // 21.1/21.4/21.8 ship javafml 4/6/9. Putting the loader range here makes FML refuse
+        // the mod outright with "needs language provider javafml:21.1 or above".
+        "javafml_range" to (propOrNull("deps.javafml.range") ?: "[1,)"),
         "forge" to (propOrNull("deps.forge") ?: ""),
         "forge_range" to (propOrNull("deps.forge.range") ?: ""),
     )

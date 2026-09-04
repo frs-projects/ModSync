@@ -86,6 +86,7 @@ once, on Java 17, and is folded into each platform jar.
 | `apply` | `Journal`, `JournalOp`, `JournalApplier` |
 | `net` | `Downloader` with mirrors, retries and streaming hash verification |
 | `config` | Client settings, including the alwaysKeep globs |
+| `export` | Folder scan, Modrinth/CurseForge lookup, manifest writer for `/modsync export` |
 
 ### Design decisions worth knowing
 
@@ -119,6 +120,64 @@ unrecoverable from inside the game.
 
 **Hard link, then fall back to copy.** Confirmed at the filesystem level (same inode, 2
 links). Symlinks are deliberately unused: they need Developer Mode or elevation on Windows.
+
+**Export writes the same format the client reads.** `/modsync export` emits manifest v1, so an
+export can be published without a conversion step — and so round-tripping our own output back
+through `ManifestCodec.parse` is a real test of the exporter. That test is what catches a
+`packId` outside the parser's charset, or an entry that lost its hash.
+
+**Export does not reuse `LocalScanner`.** That scanner ends every pass with
+`stateCache.retainOnly(...)`, so scanning one folder for an export would evict the hash cache
+for every root it did not visit and force a full rehash on the next join. Export is rare and
+explicit; paying for its own hashes is cheaper than corrupting the cache the sync path lives on.
+
+**URL lookups are opt-in.** `/modsync export mods` is offline; `/modsync export resolve mods`
+queries the hosts. A command that silently makes outbound requests is a surprise, and an
+air-gapped or rate-limited export is a normal thing to want. A host being down degrades to
+"fewer URLs filled in", never to a lost export.
+
+**Client feedback bypasses the command source.** On Forge 1.20.1 a client command's source is
+the `LocalPlayer`, whose `acceptsSuccess()` reads the `sendCommandFeedback` gamerule — so
+progress would be silently swallowed on any server that turns that rule off. `ClientChat`
+writes to the chat overlay directly, which also means no source is captured across threads and
+a disconnect mid-export cannot leave the worker holding a dead `ClientPacketListener`.
+
+**One Brigadier tree, four registration paths.** The paths hand back three incompatible source
+types, so `ModSyncCommand` is generic over `S` and takes the two things that differ — who may
+run it, and how to talk back — as arguments. It references only Brigadier and loader-neutral
+Minecraft classes: `Minecraft` is client-only and would abort a dedicated server the moment
+that class loaded, so every client reference is confined to `ClientChat` and reached only
+behind a dist check.
+
+**The server-side command only registers on a dedicated server.** Gated on
+`CommandSelection.DEDICATED`, so it can never collide with the client command in singleplayer.
+It warns on use: a server has no shaderpacks and no client-only mods, so its export is missing
+exactly the content the feature exists to capture.
+
+### Command API stability across the matrix
+
+Verified by disassembling the cached jars, not by assumption — the whole command layer needs
+**no version predicates**, only loader gating:
+
+- `ClientCommandRegistrationCallback` and `CommandRegistrationCallback` are byte-identical
+  across fabric-command-api-v2 `2.2.14` / `2.2.28` / `2.2.41` / `2.3.1`.
+- `CommandSourceStack.sendSuccess(Supplier<Component>, boolean)` is the same on 1.20.1 and
+  1.21.8; the `Component` -> `Supplier` change landed before 1.20.1.
+- `RegisterCommandsEvent` / `RegisterClientCommandsEvent` have the same shape on Forge 47,
+  NeoForge 21.1 and 21.8 — only the package differs. Both are **game-bus** events, so the
+  existing no-arg `@Mod` constructor is enough to subscribe.
+
+Two traps that would have forced a predicate, both avoided: `MinecraftServer.getServerDirectory()`
+returns `File` on 1.20.1 and `Path` from 1.21.1 (the loader APIs `FabricLoader.getGameDir()` /
+`FMLPaths.GAMEDIR` are used instead), and `@EventBusSubscriber(bus = ...)` is gone in the FML
+that ships with NeoForge 21.8.
+
+Forge's eventbus 6 has no `addListener(Class, Consumer)` overload and cannot infer an event
+type from an untyped lambda, so its listeners are method references. NeoForge's bus 8 has the
+`Class` overload on every version in the matrix.
+
+**Loader-gated files carry only `//` comments.** Stonecutter comments an inactive file out by
+wrapping it in `/* */`, and a `*/` inside a Javadoc block would close that early.
 
 ### Windows file locking
 

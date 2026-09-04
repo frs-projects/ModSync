@@ -34,10 +34,25 @@ public record ModSyncConfig(
     /** Per-server manifest URL overrides, keyed by {@code host:port}. */
     Map<String, String> manifestOverrides,
     /** Probe the server's HTTP endpoint automatically when joining. */
-    boolean autoProbe
+    boolean autoProbe,
+    /**
+     * Personal CurseForge API key, used only by {@code /modsync export} to turn local files
+     * into download URLs. Empty means CurseForge is not queried. This is a secret: it belongs
+     * to the person who requested it, not to the pack.
+     */
+    String curseForgeApiKey
 ) {
 
     public static final int CURRENT_FORMAT_VERSION = 1;
+
+    /**
+     * Written into every config so the warning travels with the file. A modpack is usually
+     * published by zipping a working game directory, which is exactly how a private API key
+     * ends up on the internet.
+     */
+    private static final String WARNING =
+        "This file may contain your personal CurseForge API key. NEVER ship modsync/modsync.json "
+            + "inside a published modpack, and never paste it into an issue or a chat.";
 
     private static final Gson GSON = new GsonBuilder()
         .setPrettyPrinting()
@@ -53,7 +68,8 @@ public record ModSyncConfig(
             List.of(),
             4,
             Map.of(),
-            true);
+            true,
+            "");
     }
 
     public static ModSyncConfig load(Path file) throws IOException {
@@ -80,11 +96,13 @@ public record ModSyncConfig(
                 o.has("parallelDownloads") ? o.get("parallelDownloads").getAsInt()
                     : d.parallelDownloads())),
             stringMap(o, "manifestOverrides"),
-            o.has("autoProbe") ? o.get("autoProbe").getAsBoolean() : d.autoProbe());
+            o.has("autoProbe") ? o.get("autoProbe").getAsBoolean() : d.autoProbe(),
+            optString(o, "curseForgeApiKey", d.curseForgeApiKey()));
     }
 
     public void save(Path file) throws IOException {
         JsonObject o = new JsonObject();
+        o.addProperty("_warning", WARNING);
         o.addProperty("formatVersion", formatVersion);
 
         JsonArray keep = new JsonArray();
@@ -102,6 +120,7 @@ public record ModSyncConfig(
         o.add("manifestOverrides", overrides);
 
         o.addProperty("autoProbe", autoProbe);
+        o.addProperty("curseForgeApiKey", curseForgeApiKey);
 
         Files.createDirectories(file.getParent());
         Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
@@ -117,6 +136,13 @@ public record ModSyncConfig(
     /** The manifest URL to use for a server, or null to probe the default endpoint. */
     public String manifestOverrideFor(String hostPort) {
         return manifestOverrides.get(hostPort);
+    }
+
+    private static String optString(JsonObject o, String key, String fallback) {
+        if (!o.has(key) || !o.get(key).isJsonPrimitive()) {
+            return fallback;
+        }
+        return o.get(key).getAsString().trim();
     }
 
     private static List<String> stringList(JsonObject o, String key, List<String> fallback) {

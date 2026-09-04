@@ -91,6 +91,19 @@ public final class ModSyncPaths {
         return root.resolve("modsync.json");
     }
 
+    /**
+     * Where {@code /modsync export} drops its manifests. Kept out of {@link #root()} itself so
+     * an admin can hand someone the whole folder without also handing over their config.
+     */
+    public Path exportDir() {
+        return root.resolve("exports");
+    }
+
+    /** A named file inside {@link #exportDir()}. The caller supplies the timestamped name. */
+    public Path exportFile(String name) {
+        return exportDir().resolve(sanitize(name));
+    }
+
     /** Cached path -> hash records, so a rejoin does not rehash every jar. */
     public Path stateCache() {
         return root.resolve("filestate.tsv");
