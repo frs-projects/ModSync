@@ -3,6 +3,8 @@ name: Build
 on:
   push:
     branches: [main]
+    # Pushing a tag such as v0.1.2 also publishes a GitHub Release with every node's jar.
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -59,3 +61,35 @@ jobs:
         with:
           name: modsync-${{ matrix.node }}
           path: versions/${{ matrix.node }}/build/libs/modsync-*.jar
+
+  release:
+    name: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [core, matrix]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      # A tag that disagrees with mod.version would publish jars named after a different
+      # version than the release, so refuse it rather than ship the mismatch.
+      - name: Check the tag matches mod.version
+        run: |
+          version=$(grep '^mod.version=' gradle.properties | cut -d= -f2)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match mod.version=$version"
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: modsync-*
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Sources jars stay on the workflow run; the release carries what players install.
+          find dist -name 'modsync-*.jar' ! -name '*-sources.jar' -print0 \
+            | xargs -0 gh release create "$GITHUB_REF_NAME" --title "ModSync $GITHUB_REF_NAME" \
+                --generate-notes
