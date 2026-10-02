@@ -6,20 +6,21 @@ after the game exits.
 
 Multi-loader: Fabric, NeoForge and Forge, Minecraft 1.20.1 through 1.21.8.
 
-> **Status: engine complete, not yet playable.** The synchronisation engine — manifest
-> parsing, diffing, downloading, the crash-safe applier — is implemented and covered by 136
-> tests. The only part wired into the game today is the `/modsync export` command. The join
-> handshake that fetches a server's manifest and shows the player a diff is not built yet, so
-> installing the mod on a server does not yet sync anyone. See [Roadmap](#roadmap).
+> **Status: syncing works with a client-side manifest URL.** List the server's manifest in
+> `config/modsync-servers.json` (see [Configuration](#configuration)) and joining that server
+> syncs first.
+> The server cannot announce its manifest yet. See [Roadmap](#roadmap).
 
 ## How it works
 
-1. The client obtains the server's manifest — a JSON file listing every managed file with its
-   size, hashes and download URLs.
+1. When the player joins a server, before any connection is opened, the client fetches that
+   server's manifest — a JSON file listing every managed file with its size, hashes and download
+   URLs. The URL comes from `config/modsync-servers.json`. Syncing before connecting
+   matters: a client with the wrong mods is usually refused during the handshake.
 2. It scans the game directory and diffs it against that manifest. Files are matched by hash,
    so a renamed-but-identical jar is not re-downloaded.
-3. The player is shown what will be installed, replaced and moved aside, and accepts or
-   declines. Declining a `require` file means not joining; declining an `optional` one is fine.
+3. The player is shown what will be installed, replaced and moved aside, and can sync, join
+   without syncing, or go back. A client that is already up to date joins without seeing it.
 4. Accepted files download into a content-addressed cache, verified by hash as they stream.
 5. The plan is written to a journal, Minecraft exits, and a small helper JVM applies the
    journal and swaps the files in. Windows will not let a running game's jars be replaced,
@@ -77,6 +78,25 @@ Format version 1. A bare JSON array is the pre-v1 sketch and is rejected by the 
 | `urls` | list of mirrors | First URL that verifies wins |
 | `unlistedPolicy` | `quarantine` (default), `keep` | What happens to files the manifest does not mention |
 
+Before syncing, the player gets one page of tick boxes for `recommend` files (ticked by default)
+and one for `optional` files (unticked by default). A page only lists files that are missing or
+have changed. **Don't ask again** keeps those choices, stored per pack in
+`modsync/profiles/<pack>/choices.json`, until the server ships a different version of one of
+the files. `require` and `forbid` files are never asked about.
+
+To change a choice later, use `/modsync optional` (client-side; a screen for this is planned):
+
+```
+/modsync optional <pack>                 # list remembered choices
+/modsync optional <pack> remove <mod>    # move an installed optional mod aside on the next join
+/modsync optional <pack> forget <mod>    # ask about this mod again
+/modsync optional <pack> reset           # ask about everything again
+```
+
+`<pack>` is the folder name under `modsync/profiles/`, and `<mod>` is the id shown by the list;
+both tab-complete. Removal goes through the normal sync, so the jar is moved to
+`modsync/quarantine/` when Minecraft closes, not deleted.
+
 `quarantine` makes the manifest a whitelist, which is what makes updates free: when a pack
 moves from `sodium-0.6.12.jar` to `0.6.13`, the old jar simply becomes unlisted, is moved
 aside, and the new one is installed. No install-state bookkeeping, and two versions of one mod
@@ -117,14 +137,39 @@ client-only content is not installed there and will be missing from the export.
 
 ## Configuration
 
-`.minecraft/modsync/modsync.json`, created with defaults on first use:
+Two files, both created the first time the game starts. They are separate because one is meant
+to ship with a modpack and the other must never be.
+
+### `config/modsync-servers.json` — which manifest each server uses
+
+Ship this one with your pack, so players sync without editing anything:
+
+```json
+{
+  "servers": {
+    "play.example.net": "https://panel.example.net/p/modsync/main.json",
+    "test.example.net:25566": "https://panel.example.net/p/modsync/test.json"
+  }
+}
+```
+
+`servers` is an object, not a list. The key is the address as typed in the server list. A key
+without a port means port 25565, and host names match regardless of case. If the file is
+malformed, the log says so and nothing syncs; if no key matches, the log says that too. The
+file is read on every join, so an edit takes effect without restarting the game. Files served
+from the manifest's own host are trusted for download when the manifest URL is `https://`, so a
+panel can serve its own uploads.
+
+0.1.2 kept these URLs as `manifestOverrides` in the client config. They are moved here
+automatically the first time a newer version starts.
+
+### `modsync/modsync.json` — personal client settings
 
 | Key | Default | Meaning |
 |---|---|---|
 | `alwaysKeep` | `mods/iris-*.jar`, `mods/sodium-extra-*.jar`, `shaderpacks/**` | Game-dir-relative globs ModSync must never quarantine or replace |
 | `approvedHosts` | `[]` | Extra download hosts you trust, beyond the built-in allowlist |
 | `parallelDownloads` | `4` | Concurrent downloads (clamped to 1–16) |
-| `manifestOverrides` | `{}` | Per-server manifest URL overrides, keyed by `host:port` |
 | `autoProbe` | `true` | Probe the server's endpoint automatically when joining |
 | `curseForgeApiKey` | `""` | Personal key for `/modsync export resolve` |
 
@@ -146,8 +191,9 @@ Without a key, `resolve` asks Modrinth only, and CurseForge-only files come back
 
 > **⚠️ Never ship `modsync/modsync.json` in a published modpack.** Most packs are built by
 > zipping a working game directory, which is exactly how a private API key ends up on the
-> internet. The key is yours, not the pack's. Exports are written to a separate folder
-> (`modsync/exports/`) so you can hand those out without handing over your config. If you
+> internet. The key is yours, not the pack's. That is why the server URLs live in a separate
+> file under `config/`, and exports in `modsync/exports/`: both can be handed out without
+> handing over your config. If you
 > ever do leak a key, revoke it in the CurseForge console.
 
 ## Security model
@@ -221,6 +267,7 @@ versions/ Per-target Stonecutter nodes and their dependency versions
 | `net` | `Downloader` with mirrors, retries and streaming verification |
 | `config` | Client settings |
 | `export` | Folder scan, Modrinth/CurseForge lookup, manifest writer |
+| `sync` | `SyncSession`: fetch, sandbox check, scan and diff, download, journal — the join-time sequence |
 
 The applier has to run in a bare JVM after Minecraft has exited, where Gson is not on the
 classpath — so the journal is tab-separated rather than JSON, and everything the applier
@@ -234,9 +281,12 @@ touches stays Gson-free.
 - [x] Downloader with mirrors and streaming verification
 - [x] Crash-safe journal and standalone applier
 - [x] `/modsync export`, with Modrinth and CurseForge resolution
-- [ ] Server-side manifest hosting and the join handshake
-- [ ] The accept/decline diff screen
-- [ ] Restart prompt and applier hand-off from the running game
+- [x] Sync before joining, with the manifest URL from the client config
+- [x] Diff screen, download progress, and applier hand-off when the game exits
+- [x] Picking `recommend` and `optional` files before syncing, with "don't ask again"
+- [ ] A screen for managing optional mods, replacing `/modsync optional` (reachable from the
+      mod list via Mod Menu on Fabric and the loader's config-screen hook on Forge/NeoForge)
+- [ ] The server announcing its manifest URL (needs a channel that works before the mod check)
 - [ ] Windows validation of the post-exit file swap (only exercised on Linux so far)
 
 ## License

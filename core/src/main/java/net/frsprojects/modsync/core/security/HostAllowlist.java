@@ -26,16 +26,19 @@ public final class HostAllowlist {
 
     private final List<String> allowedSuffixes;
     private final List<String> extraExactHosts;
+    private final List<String> exactHttpsHosts;
     private final boolean requireHttps;
 
-    private HostAllowlist(List<String> suffixes, List<String> exact, boolean requireHttps) {
+    private HostAllowlist(List<String> suffixes, List<String> exact, List<String> exactHttps,
+            boolean requireHttps) {
         this.allowedSuffixes = List.copyOf(suffixes);
         this.extraExactHosts = List.copyOf(exact);
+        this.exactHttpsHosts = List.copyOf(exactHttps);
         this.requireHttps = requireHttps;
     }
 
     public static HostAllowlist defaults() {
-        return new HostAllowlist(DEFAULT_HOSTS, List.of(), true);
+        return new HostAllowlist(DEFAULT_HOSTS, List.of(), List.of(), true);
     }
 
     /**
@@ -52,7 +55,38 @@ public final class HostAllowlist {
         }
         List<String> exact = new ArrayList<>(extraExactHosts);
         exact.add(serverHost.toLowerCase(Locale.ROOT));
-        return new HostAllowlist(allowedSuffixes, exact, requireHttps);
+        return new HostAllowlist(allowedSuffixes, exact, exactHttpsHosts, requireHttps);
+    }
+
+    /**
+     * The current set plus the host the manifest itself is fetched from, exact match and
+     * HTTPS only.
+     *
+     * <p>A manifest pins every file by SHA-512 and comes from a URL the player configured, so
+     * its host can serve nothing the manifest could not already point at elsewhere. That is
+     * what lets a panel serve its own uploads without every player approving it by hand. Kept
+     * apart from {@link #plusServer} because that one also allows plain HTTP.
+     */
+    public HostAllowlist plusManifestHost(String manifestUrl) {
+        if (manifestUrl == null || manifestUrl.isBlank()) {
+            return this;
+        }
+        String host;
+        try {
+            URI uri = new URI(manifestUrl.trim());
+            if (uri.getScheme() == null || !uri.getScheme().equalsIgnoreCase("https")) {
+                return this;
+            }
+            host = uri.getHost();
+        } catch (URISyntaxException e) {
+            return this;
+        }
+        if (host == null || host.isBlank()) {
+            return this;
+        }
+        List<String> exactHttps = new ArrayList<>(exactHttpsHosts);
+        exactHttps.add(host.toLowerCase(Locale.ROOT));
+        return new HostAllowlist(allowedSuffixes, extraExactHosts, exactHttps, requireHttps);
     }
 
     /** The defaults plus hosts the player has explicitly approved. */
@@ -63,7 +97,7 @@ public final class HostAllowlist {
                 suffixes.add(h.trim().toLowerCase(Locale.ROOT));
             }
         }
-        return new HostAllowlist(suffixes, extraExactHosts, requireHttps);
+        return new HostAllowlist(suffixes, extraExactHosts, exactHttpsHosts, requireHttps);
     }
 
     /**
@@ -93,13 +127,15 @@ public final class HostAllowlist {
         host = host.toLowerCase(Locale.ROOT);
 
         boolean exact = extraExactHosts.contains(host);
-        if (!exact && !matchesSuffix(host)) {
+        boolean manifestHost = exactHttpsHosts.contains(host);
+        if (!exact && !manifestHost && !matchesSuffix(host)) {
             throw new SandboxException(
                 "Refusing to download from '" + host + "': it is not an approved host. "
                     + "Approve it in the ModSync settings if you trust it.");
         }
         // The joined server is exempt: its files are hash-pinned and it is often plain HTTP.
-        if (requireHttps && !exact && !scheme.equals("https")) {
+        // The manifest's host is not: it is trusted only over TLS, whatever requireHttps says.
+        if ((requireHttps || manifestHost) && !exact && !scheme.equals("https")) {
             throw new SandboxException(
                 "Refusing a plain-http download from '" + host + "'");
         }

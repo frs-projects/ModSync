@@ -67,6 +67,32 @@ class HostAllowlistTest {
         assertFalse(withServer.isAllowed("http://evil.mc.example.net/x.jar"));
     }
 
+    /**
+     * The manifest's own host may serve files (a panel's uploads), but only over HTTPS and
+     * only that exact host.
+     */
+    @Test
+    void theManifestHostIsTrustedOverHttpsOnly() {
+        HostAllowlist withPanel =
+            defaults.plusManifestHost("https://panel.example/p/modsync/main.json");
+        assertTrue(withPanel.isAllowed("https://panel.example/p/modsync/files/1/abcd/x.jar"));
+        assertTrue(withPanel.isAllowed("https://PANEL.example/x.jar"));
+        assertFalse(withPanel.isAllowed("http://panel.example/p/modsync/files/1/abcd/x.jar"));
+        // Exact match, not a suffix grant.
+        assertFalse(withPanel.isAllowed("https://evil.panel.example/x.jar"));
+        assertFalse(withPanel.isAllowed("https://notpanel.example/x.jar"));
+    }
+
+    /** A manifest fetched over plain HTTP proves nothing about its host, so it earns no trust. */
+    @Test
+    void aPlainHttpOrMalformedManifestUrlGrantsNothing() {
+        assertFalse(defaults.plusManifestHost("http://panel.example/m.json")
+            .isAllowed("https://panel.example/x.jar"));
+        assertFalse(defaults.plusManifestHost("not a url")
+            .isAllowed("https://panel.example/x.jar"));
+        assertFalse(defaults.plusManifestHost("").isAllowed("https://panel.example/x.jar"));
+    }
+
     @Test
     void userApprovedHostsAreHonoured() {
         HostAllowlist extended = defaults.plusUserApproved(List.of("my-cdn.example"));

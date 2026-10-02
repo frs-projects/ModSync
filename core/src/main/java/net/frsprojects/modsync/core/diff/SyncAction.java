@@ -32,6 +32,10 @@ public record SyncAction(
 
     /** Whether the diff UI ticks this by default. */
     public boolean selectedByDefault() {
+        if (kind == ActionKind.QUARANTINE_DECLINED) {
+            // The player already chose this, outside the diff UI.
+            return true;
+        }
         if (entry == null) {
             // Quarantining an unlisted file is part of the whitelist contract, not a choice.
             return kind.mutates();
@@ -39,6 +43,12 @@ public record SyncAction(
         return entry.policy() == Policy.REQUIRE
             || entry.policy() == Policy.FORBID
             || entry.defaultEnabled();
+    }
+
+    /** Whether this is an optional file being offered, as opposed to one being removed. */
+    public boolean isOffer() {
+        return isOptional() && (kind == ActionKind.INSTALL || kind == ActionKind.REPLACE
+            || kind == ActionKind.RESTORE);
     }
 
     /** Bytes this action will pull over the network; zero when it needs none. */

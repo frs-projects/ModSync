@@ -70,6 +70,11 @@ public final class ModSyncPaths {
         return root.resolve("quarantine").resolve(sanitize(profileId));
     }
 
+    /** What the player picked from a pack's recommended and optional files. */
+    public Path optionalChoices(String profileId) {
+        return profileDir(profileId).resolve("choices.json");
+    }
+
     /** Which profile {@code mods/} currently holds. */
     public Path activeState() {
         return root.resolve("active.json");
@@ -81,14 +86,25 @@ public final class ModSyncPaths {
         return root.resolve("pending.tsv");
     }
 
-    /** Per-pack trust decisions and remembered optional selections. */
+    /** Per-pack trust decisions. */
     public Path trustStore() {
         return root.resolve("trust.json");
     }
 
-    /** Client configuration, including the alwaysKeep globs. */
+    /**
+     * Client configuration, including the alwaysKeep globs. Personal (it can hold an API key),
+     * so it stays out of {@code config/}, which modpacks routinely ship.
+     */
     public Path config() {
         return root.resolve("modsync.json");
+    }
+
+    /**
+     * Which manifest each server syncs against. In {@code config/} because it is meant to ship
+     * with a modpack, so players get the right manifest without editing anything.
+     */
+    public Path serverManifests() {
+        return gameDir.resolve("config").resolve("modsync-servers.json");
     }
 
     /**

@@ -72,7 +72,7 @@ public record SyncPlan(SyncManifest manifest, List<SyncAction> actions) {
                 continue;
             }
             switch (action.kind()) {
-                case QUARANTINE_UNLISTED, QUARANTINE_FORBIDDEN -> {
+                case QUARANTINE_UNLISTED, QUARANTINE_FORBIDDEN, QUARANTINE_DECLINED -> {
                     String target = quarantineRoot + "/" + action.path();
                     dirs.add(parentOf(target));
                     moves.add(JournalOp.move(action.path(), target));

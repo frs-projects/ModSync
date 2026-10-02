@@ -11,6 +11,9 @@ description = '''${description}'''
 authors = "${authors}"
 displayURL = "${source}"
 
+[[mixins]]
+config = "modsync.mixins.json"
+
 [[dependencies.${id}]]
 modId = "neoforge"
 type = "required"

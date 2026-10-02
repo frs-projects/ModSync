@@ -12,6 +12,7 @@
     "main": ["${group}.ModSyncFabric"],
     "client": ["${group}.ModSyncFabricClient"]
   },
+  "mixins": ["modsync.mixins.json"],
   "depends": {
     "fabricloader": ">=${fabric_loader}",
     "fabric-api": "*",

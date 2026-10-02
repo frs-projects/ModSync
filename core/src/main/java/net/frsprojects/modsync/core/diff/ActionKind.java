@@ -16,6 +16,11 @@ public enum ActionKind {
     RESTORE,
     /** Listed with policy {@code forbid} and present; moved to quarantine. */
     QUARANTINE_FORBIDDEN,
+    /**
+     * A {@code recommend} or {@code optional} file the player has said they no longer want,
+     * still present; moved to quarantine.
+     */
+    QUARANTINE_DECLINED,
     /** Not mentioned by the manifest; moved to quarantine under the whitelist model. */
     QUARANTINE_UNLISTED,
     /** Not mentioned, but protected by an alwaysKeep rule or because it is ModSync itself. */

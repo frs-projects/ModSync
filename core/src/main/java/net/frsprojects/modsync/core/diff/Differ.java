@@ -41,6 +41,15 @@ public final class Differ {
      */
     public SyncPlan diff(SyncManifest manifest, List<ManifestEntry> entries,
             List<LocalFile> local) {
+        return diff(manifest, entries, local, Set.of());
+    }
+
+    /**
+     * @param declined {@link ManifestEntry#identity() identities} of optional entries the
+     *     player has said they do not want; an up-to-date copy of one is quarantined
+     */
+    public SyncPlan diff(SyncManifest manifest, List<ManifestEntry> entries,
+            List<LocalFile> local, Set<String> declined) {
         Map<String, LocalFile> byPath = new HashMap<>();
         for (LocalFile f : local) {
             byPath.put(f.path(), f);
@@ -51,7 +60,7 @@ public final class Differ {
 
         for (ManifestEntry entry : entries) {
             claimed.add(entry.path());
-            actions.add(actionFor(entry, byPath.get(entry.path())));
+            actions.add(actionFor(entry, byPath.get(entry.path()), declined));
         }
 
         if (manifest.unlistedPolicy() == UnlistedPolicy.QUARANTINE) {
@@ -77,7 +86,8 @@ public final class Differ {
         return new SyncPlan(manifest, List.copyOf(actions));
     }
 
-    private SyncAction actionFor(ManifestEntry entry, LocalFile existing) {
+    private SyncAction actionFor(ManifestEntry entry, LocalFile existing,
+            Set<String> declined) {
         String path = entry.path();
 
         if (entry.policy() == Policy.FORBID) {
@@ -96,6 +106,14 @@ public final class Differ {
         String wanted = entry.hashes().sha512();
 
         if (existing != null && existing.sha512().equals(wanted)) {
+            if (!entry.policy().isMandatory() && declined.contains(entry.identity())) {
+                if (keepRules.isProtected(path)) {
+                    return new SyncAction(ActionKind.PROTECTED, path, entry, existing,
+                        keepRules.reasonFor(path));
+                }
+                return new SyncAction(ActionKind.QUARANTINE_DECLINED, path, entry, existing,
+                    "you removed it");
+            }
             return new SyncAction(ActionKind.KEEP, path, entry, existing, "up to date");
         }
 

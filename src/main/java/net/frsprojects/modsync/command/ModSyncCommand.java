@@ -73,7 +73,7 @@ public final class ModSyncCommand {
             Supplier<Path> gameDir,
             boolean dedicatedServer) {
 
-        return LiteralArgumentBuilder.<S>literal("modsync")
+        LiteralArgumentBuilder<S> root = LiteralArgumentBuilder.<S>literal("modsync")
             .requires(requirement)
             .then(LiteralArgumentBuilder.<S>literal("export")
                 .then(folderChain(channelFor, gameDir, dedicatedServer, false))
@@ -82,6 +82,11 @@ public final class ModSyncCommand {
                 // folder is called "resolve".
                 .then(LiteralArgumentBuilder.<S>literal("resolve")
                     .then(folderChain(channelFor, gameDir, dedicatedServer, true))));
+        if (!dedicatedServer) {
+            // A server has no player choices to manage.
+            root.then(OptionalCommand.build(channelFor, gameDir));
+        }
+        return root;
     }
 
     private static <S> RequiredArgumentBuilder<S, String> folderChain(

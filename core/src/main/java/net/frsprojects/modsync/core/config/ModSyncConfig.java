@@ -13,9 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Client-side settings.
@@ -31,8 +29,6 @@ public record ModSyncConfig(
     List<String> approvedHosts,
     /** Concurrent downloads. */
     int parallelDownloads,
-    /** Per-server manifest URL overrides, keyed by {@code host:port}. */
-    Map<String, String> manifestOverrides,
     /** Probe the server's HTTP endpoint automatically when joining. */
     boolean autoProbe,
     /**
@@ -67,7 +63,6 @@ public record ModSyncConfig(
             List.of("mods/iris-*.jar", "mods/sodium-extra-*.jar", "shaderpacks/**"),
             List.of(),
             4,
-            Map.of(),
             true,
             "");
     }
@@ -95,9 +90,21 @@ public record ModSyncConfig(
             Math.max(1, Math.min(16,
                 o.has("parallelDownloads") ? o.get("parallelDownloads").getAsInt()
                     : d.parallelDownloads())),
-            stringMap(o, "manifestOverrides"),
             o.has("autoProbe") ? o.get("autoProbe").getAsBoolean() : d.autoProbe(),
             optString(o, "curseForgeApiKey", d.curseForgeApiKey()));
+    }
+
+    /**
+     * Like {@link #load}, but writes the defaults first when the file does not exist, so a
+     * player has a file to edit after the first launch rather than having to know its name.
+     */
+    public static ModSyncConfig loadOrCreate(Path file) throws IOException {
+        if (!Files.isRegularFile(file)) {
+            ModSyncConfig d = defaults();
+            d.save(file);
+            return d;
+        }
+        return load(file);
     }
 
     public void save(Path file) throws IOException {
@@ -115,10 +122,6 @@ public record ModSyncConfig(
 
         o.addProperty("parallelDownloads", parallelDownloads);
 
-        JsonObject overrides = new JsonObject();
-        manifestOverrides.forEach(overrides::addProperty);
-        o.add("manifestOverrides", overrides);
-
         o.addProperty("autoProbe", autoProbe);
         o.addProperty("curseForgeApiKey", curseForgeApiKey);
 
@@ -131,11 +134,6 @@ public record ModSyncConfig(
         } catch (IOException e) {
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
         }
-    }
-
-    /** The manifest URL to use for a server, or null to probe the default endpoint. */
-    public String manifestOverrideFor(String hostPort) {
-        return manifestOverrides.get(hostPort);
     }
 
     private static String optString(JsonObject o, String key, String fallback) {
@@ -159,18 +157,5 @@ public record ModSyncConfig(
             }
         }
         return List.copyOf(out);
-    }
-
-    private static Map<String, String> stringMap(JsonObject o, String key) {
-        if (!o.has(key) || !o.get(key).isJsonObject()) {
-            return Map.of();
-        }
-        Map<String, String> out = new LinkedHashMap<>();
-        for (var e : o.getAsJsonObject(key).entrySet()) {
-            if (e.getValue().isJsonPrimitive()) {
-                out.put(e.getKey(), e.getValue().getAsString());
-            }
-        }
-        return Map.copyOf(out);
     }
 }

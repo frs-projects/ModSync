@@ -8,10 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,7 +38,6 @@ class ModSyncConfigTest {
             List.of("mods/keep-*.jar"),
             List.of("my-cdn.example"),
             8,
-            Map.of("mc.example.net:25565", "https://example.net/manifest.json"),
             false,
             "cf-secret-key");
 
@@ -59,16 +56,23 @@ class ModSyncConfigTest {
         assertEquals(1, ModSyncConfig.load(file).parallelDownloads());
     }
 
+    /** A player needs a file to edit after the first launch. */
     @Test
-    void manifestOverridesAreLookedUpByHostAndPort() throws IOException {
-        Path file = dir.resolve("modsync.json");
-        Files.writeString(file,
-            "{\"manifestOverrides\":{\"mc.example.net:25565\":\"https://e/m.json\"}}",
-            StandardCharsets.UTF_8);
+    void loadOrCreateWritesTheDefaultsWhenMissing() throws IOException {
+        Path file = dir.resolve("modsync").resolve("modsync.json");
 
-        ModSyncConfig config = ModSyncConfig.load(file);
-        assertEquals("https://e/m.json", config.manifestOverrideFor("mc.example.net:25565"));
-        assertNull(config.manifestOverrideFor("other.example:25565"));
+        assertEquals(ModSyncConfig.defaults(), ModSyncConfig.loadOrCreate(file));
+        assertTrue(Files.isRegularFile(file));
+        assertEquals(ModSyncConfig.defaults(), ModSyncConfig.load(file));
+    }
+
+    @Test
+    void loadOrCreateLeavesAnExistingFileAlone() throws IOException {
+        Path file = dir.resolve("modsync.json");
+        Files.writeString(file, "{\"autoProbe\":false}", StandardCharsets.UTF_8);
+
+        assertEquals(false, ModSyncConfig.loadOrCreate(file).autoProbe());
+        assertEquals("{\"autoProbe\":false}", Files.readString(file));
     }
 
     @Test

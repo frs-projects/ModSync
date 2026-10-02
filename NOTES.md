@@ -87,6 +87,7 @@ once, on Java 17, and is folded into each platform jar.
 | `net` | `Downloader` with mirrors, retries and streaming hash verification |
 | `config` | Client settings, including the alwaysKeep globs |
 | `export` | Folder scan, Modrinth/CurseForge lookup, manifest writer for `/modsync export` |
+| `sync` | `SyncSession`: fetch, sandbox check, scan and diff, download, journal — the join-time sequence |
 
 ### Design decisions worth knowing
 

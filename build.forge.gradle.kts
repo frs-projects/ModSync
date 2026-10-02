@@ -5,6 +5,10 @@ plugins {
 
 loom {
     silentMojangMappingsLicense()
+    // Forge 47 reads mixin configs from the jar manifest, not from mods.toml.
+    forge {
+        mixinConfig("modsync.mixins.json")
+    }
 }
 
 dependencies {
