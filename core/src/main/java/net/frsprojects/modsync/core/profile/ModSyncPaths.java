@@ -108,6 +108,15 @@ public final class ModSyncPaths {
     }
 
     /**
+     * Dedicated-server settings, including the manifest the server keeps itself in line with.
+     * The name starts with {@code modsync}, so a manifest that manages {@code config/} can never
+     * quarantine it.
+     */
+    public Path serverConfig() {
+        return gameDir.resolve("config").resolve("modsync-server.json");
+    }
+
+    /**
      * Where {@code /modsync export} drops its manifests. Kept out of {@link #root()} itself so
      * an admin can hand someone the whole folder without also handing over their config.
      */

@@ -87,7 +87,7 @@ once, on Java 17, and is folded into each platform jar.
 | `net` | `Downloader` with mirrors, retries and streaming hash verification |
 | `config` | Client settings, including the alwaysKeep globs |
 | `export` | Folder scan, Modrinth/CurseForge lookup, manifest writer for `/modsync export` |
-| `sync` | `SyncSession`: fetch, sandbox check, scan and diff, download, journal — the join-time sequence |
+| `sync` | `SyncSession`: fetch, sandbox check, scan and diff, download, journal — the join-time sequence; `ServerUpdater` runs it headless for a dedicated server |
 
 ### Design decisions worth knowing
 
@@ -118,6 +118,15 @@ cannot sweep the player's `shaderpacks/`.
 **A user keep rule beats a manifest instruction.** `alwaysKeep` and the built-in protection
 for ModSync's own jar and the loader win over a server's opinion — losing ModSync mid-sync is
 unrecoverable from inside the game.
+
+**A server applies its journal in-process, after it stops.** The client hands the swap to a
+detached JVM, but a server usually runs in a container where the main process exiting takes
+every child with it, so a detached helper would be killed before it started. On Linux and macOS
+a jar can be moved while the JVM still holds it open, so the server applies the journal itself
+on the loader's server-stopped event, after the world is saved. A shutdown hook covers a JVM
+that exits without that event, and waits for the server thread first because a SIGTERM runs
+every hook at once. Only if the in-process apply fails (Windows file locks) does it fall back
+to the detached helper.
 
 **Hard link, then fall back to copy.** Confirmed at the filesystem level (same inode, 2
 links). Symlinks are deliberately unused: they need Developer Mode or elevation on Windows.

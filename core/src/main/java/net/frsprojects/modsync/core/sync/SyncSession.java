@@ -10,6 +10,7 @@ import net.frsprojects.modsync.core.diff.LocalScanner;
 import net.frsprojects.modsync.core.diff.SyncAction;
 import net.frsprojects.modsync.core.diff.SyncPlan;
 import net.frsprojects.modsync.core.manifest.ManifestEntry;
+import net.frsprojects.modsync.core.manifest.Side;
 import net.frsprojects.modsync.core.manifest.SyncManifest;
 import net.frsprojects.modsync.core.net.DownloadProgress;
 import net.frsprojects.modsync.core.net.Downloader;
@@ -27,7 +28,8 @@ import java.util.TreeSet;
 
 /**
  * One sync against one manifest, from fetch to journal: the sequence the client runs when the
- * player joins a server that has a manifest configured.
+ * player joins a server that has a manifest configured, and a dedicated server runs on
+ * startup to keep its own mods in line (see {@link ServerUpdater}).
  *
  * <ol>
  *   <li>{@link #prepare} fetches the manifest, refuses it if any path escapes the sandbox,
@@ -81,7 +83,25 @@ public final class SyncSession {
     public static SyncSession prepare(ModSyncPaths paths, ModSyncConfig config,
             String manifestUrl, SyncManifest manifest, String fallbackProfileId, String loader,
             String mcVersion, String userAgent) throws IOException {
-        List<ManifestEntry> entries = manifest.forClient(loader, mcVersion);
+        return prepare(paths, config, manifestUrl, manifest, fallbackProfileId, loader,
+            mcVersion, userAgent, Side.CLIENT);
+    }
+
+    /**
+     * @param side {@link Side#CLIENT} or {@link Side#SERVER}: which of the manifest's entries
+     *     this game directory should hold. A server has no player to choose optional files, so
+     *     its remembered choices are never consulted.
+     */
+    public static SyncSession prepare(ModSyncPaths paths, ModSyncConfig config,
+            String manifestUrl, SyncManifest manifest, String fallbackProfileId, String loader,
+            String mcVersion, String userAgent, Side side) throws IOException {
+        if (side == Side.BOTH) {
+            throw new IllegalArgumentException("A game directory is either a client or a server");
+        }
+        boolean server = side == Side.SERVER;
+        List<ManifestEntry> entries = server
+            ? manifest.forServer(loader, mcVersion)
+            : manifest.forClient(loader, mcVersion);
 
         // The codec only checks a path's shape. Whether it may be written is decided here,
         // before anything is scanned or downloaded, and one bad path rejects the whole
@@ -112,7 +132,7 @@ public final class SyncSession {
 
         KeepRules keep = KeepRules.of(config.alwaysKeep());
         SyncPlan plan = new Differ(new ContentCache(paths), keep)
-            .diff(manifest, entries, local, choices.declined());
+            .diff(manifest, entries, local, server ? Set.of() : choices.declined());
 
         return new SyncSession(paths, config, manifestUrl, profileId, userAgent, plan, choices);
     }

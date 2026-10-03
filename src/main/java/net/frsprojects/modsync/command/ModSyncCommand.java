@@ -15,6 +15,7 @@ import net.frsprojects.modsync.core.export.ExportService;
 import net.frsprojects.modsync.core.export.JsonHttp;
 import net.frsprojects.modsync.core.export.ModMetadataLookup;
 import net.frsprojects.modsync.core.profile.ModSyncPaths;
+import net.frsprojects.modsync.server.ModSyncServer;
 import net.minecraft.commands.SharedSuggestionProvider;
 
 import java.nio.file.Path;
@@ -82,7 +83,17 @@ public final class ModSyncCommand {
                 // folder is called "resolve".
                 .then(LiteralArgumentBuilder.<S>literal("resolve")
                     .then(folderChain(channelFor, gameDir, dedicatedServer, true))));
-        if (!dedicatedServer) {
+        if (dedicatedServer) {
+            root.then(LiteralArgumentBuilder.<S>literal("update")
+                .executes(ctx -> {
+                    Channel channel = channelFor.apply(ctx.getSource());
+                    if (!ModSyncServer.checkNow(channel)) {
+                        return 0;
+                    }
+                    channel.info("Checking the server's manifest...");
+                    return Command.SINGLE_SUCCESS;
+                }));
+        } else {
             // A server has no player choices to manage.
             root.then(OptionalCommand.build(channelFor, gameDir));
         }

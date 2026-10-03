@@ -2,7 +2,8 @@
 
 A Minecraft mod that keeps a client's `mods/` folder in sync with what a server requires.
 The player joins, sees a diff of what will change, accepts it, and the files are swapped in
-after the game exits.
+after the game exits. A dedicated server can keep its own `mods/` in line with the same
+manifest.
 
 Multi-loader: Fabric, NeoForge and Forge, Minecraft 1.20.1 through 1.21.8.
 
@@ -101,6 +102,51 @@ both tab-complete. Removal goes through the normal sync, so the jar is moved to
 moves from `sodium-0.6.12.jar` to `0.6.13`, the old jar simply becomes unlisted, is moved
 aside, and the new one is installed. No install-state bookkeeping, and two versions of one mod
 can never coexist.
+
+## Keeping the server in sync
+
+A dedicated server running ModSync can follow the same manifest as its players. Set
+`manifestUrl` in `config/modsync-server.json`, which is created on first start:
+
+```json
+{
+  "manifestUrl": "https://panel.example.net/p/modsync/main.json",
+  "alwaysKeep": ["mods/spark-*.jar"],
+  "approvedHosts": [],
+  "parallelDownloads": 4,
+  "restartAfterUpdate": false
+}
+```
+
+The server checks the manifest in the background as it starts, and again when an operator runs
+`/modsync update`. It takes the entries with `side` set to `server` or `both`, installs
+`require` and `recommend` files, skips `optional` ones (nobody is there to pick them), and
+downloads into the same content cache a client uses. The swap happens **after the server
+stops**, once the world has been saved, so a running server is never changed under itself.
+Displaced files go to `modsync/quarantine/` exactly as on a client.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `manifestUrl` | `""` | The manifest to follow. Empty means the server never syncs |
+| `alwaysKeep` | `[]` | Globs ModSync must never quarantine or replace |
+| `approvedHosts` | `[]` | Extra download hosts, beyond the built-in allowlist |
+| `parallelDownloads` | `4` | Concurrent downloads (clamped to 1–16) |
+| `restartAfterUpdate` | `false` | Stop the server as soon as a startup update is ready, so it is applied straight away |
+
+`restartAfterUpdate` only helps when something starts the server again after it stops: a
+panel, a systemd unit, or a start script with a loop. It never stops a server with players
+online; the update then waits for the next stop. Without it, updates found at startup or by
+`/modsync update` are applied the next time the server is stopped.
+
+With `unlistedPolicy: quarantine`, the manifest is a whitelist on the server too. A
+server-only mod the manifest does not list, such as a permissions plugin, is moved aside
+unless the manifest lists it with `"side": "server"` or it matches `alwaysKeep`. Client-only
+jars that ended up on the server are moved aside for the same reason. The same applies to
+`config/` if the manifest manages any file in it.
+
+If the check fails (panel down, bad manifest, a download that does not verify), nothing is
+staged and the server starts with what it has. On Windows, where a running JVM locks its jars,
+the swap is handed to the same helper process the client uses.
 
 ## Creating a manifest — `/modsync export`
 
@@ -267,7 +313,7 @@ versions/ Per-target Stonecutter nodes and their dependency versions
 | `net` | `Downloader` with mirrors, retries and streaming verification |
 | `config` | Client settings |
 | `export` | Folder scan, Modrinth/CurseForge lookup, manifest writer |
-| `sync` | `SyncSession`: fetch, sandbox check, scan and diff, download, journal — the join-time sequence |
+| `sync` | `SyncSession`: fetch, sandbox check, scan and diff, download, journal — the join-time sequence; `ServerUpdater` runs it headless for a dedicated server |
 
 The applier has to run in a bare JVM after Minecraft has exited, where Gson is not on the
 classpath — so the journal is tab-separated rather than JSON, and everything the applier
@@ -284,6 +330,7 @@ touches stays Gson-free.
 - [x] Sync before joining, with the manifest URL from the client config
 - [x] Diff screen, download progress, and applier hand-off when the game exits
 - [x] Picking `recommend` and `optional` files before syncing, with "don't ask again"
+- [x] Dedicated servers following their own manifest, applied when the server stops
 - [ ] A screen for managing optional mods, replacing `/modsync optional` (reachable from the
       mod list via Mod Menu on Fabric and the loader's config-screen hook on Forge/NeoForge)
 - [ ] The server announcing its manifest URL (needs a channel that works before the mod check)
