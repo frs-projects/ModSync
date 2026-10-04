@@ -110,7 +110,7 @@ A dedicated server running ModSync can follow the same manifest as its players. 
 
 ```json
 {
-  "manifestUrl": "https://panel.example.net/p/modsync/main.json",
+  "manifestUrl": "https://packs.example.net/main.json",
   "alwaysKeep": ["mods/spark-*.jar"],
   "approvedHosts": [],
   "parallelDownloads": 4,
@@ -134,7 +134,7 @@ Displaced files go to `modsync/quarantine/` exactly as on a client.
 | `restartAfterUpdate` | `false` | Stop the server as soon as a startup update is ready, so it is applied straight away |
 
 `restartAfterUpdate` only helps when something starts the server again after it stops: a
-panel, a systemd unit, or a start script with a loop. It never stops a server with players
+hosting panel, a systemd unit, or a start script with a loop. It never stops a server with players
 online; the update then waits for the next stop. Without it, updates found at startup or by
 `/modsync update` are applied the next time the server is stopped.
 
@@ -144,7 +144,7 @@ unless the manifest lists it with `"side": "server"` or it matches `alwaysKeep`.
 jars that ended up on the server are moved aside for the same reason. The same applies to
 `config/` if the manifest manages any file in it.
 
-If the check fails (panel down, bad manifest, a download that does not verify), nothing is
+If the check fails (manifest host down, bad manifest, a download that does not verify), nothing is
 staged and the server starts with what it has. On Windows, where a running JVM locks its jars,
 the swap is handed to the same helper process the client uses.
 
@@ -181,6 +181,27 @@ The command is client-side, so it sees your shaderpacks and client-only mods. It
 registered on dedicated servers for operators (permission level 2), where it warns that
 client-only content is not installed there and will be missing from the export.
 
+## Hosting a manifest
+
+A manifest is a static JSON file; ModSync does not care what serves it. A web server, GitHub
+Pages, an object-storage bucket or your own tooling all work, as long as:
+
+- it is reachable over **HTTPS** by every player (and by the server, if it syncs too);
+- the file is valid format v1. Start from `/modsync export resolve` and edit the result;
+- every non-`forbid` entry has a `sha512`, a `size` and at least one URL ModSync may download
+  from.
+
+Mods hosted on Modrinth, CurseForge or GitHub can keep their original URLs. Anything else
+(private builds, configs, a jar no public host carries) can sit on the same host as the
+manifest: that host is trusted automatically over HTTPS, so players do not have to add it to
+`approvedHosts`. Every file is pinned by its SHA-512, so the host cannot serve anything the
+manifest does not describe.
+
+The client fetches the manifest once per join, so caching headers are optional. To ship an
+update, replace the file: the next join diffs against the new version. Keep old file URLs
+working until players have moved on, or a client that fetched the old manifest moments earlier
+fails its download and has to rejoin.
+
 ## Configuration
 
 Two files, both created the first time the game starts. They are separate because one is meant
@@ -193,8 +214,8 @@ Ship this one with your pack, so players sync without editing anything:
 ```json
 {
   "servers": {
-    "play.example.net": "https://panel.example.net/p/modsync/main.json",
-    "test.example.net:25566": "https://panel.example.net/p/modsync/test.json"
+    "play.example.net": "https://packs.example.net/main.json",
+    "test.example.net:25566": "https://packs.example.net/test.json"
   }
 }
 ```
@@ -203,8 +224,8 @@ Ship this one with your pack, so players sync without editing anything:
 without a port means port 25565, and host names match regardless of case. If the file is
 malformed, the log says so and nothing syncs; if no key matches, the log says that too. The
 file is read on every join, so an edit takes effect without restarting the game. Files served
-from the manifest's own host are trusted for download when the manifest URL is `https://`, so a
-panel can serve its own uploads.
+from the manifest's own host are trusted for download when the manifest URL is `https://`, so
+the host can serve jars of its own (see [Hosting a manifest](#hosting-a-manifest)).
 
 0.1.2 kept these URLs as `manifestOverrides` in the client config. They are moved here
 automatically the first time a newer version starts.

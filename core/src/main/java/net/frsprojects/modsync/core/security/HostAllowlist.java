@@ -64,7 +64,7 @@ public final class HostAllowlist {
      *
      * <p>A manifest pins every file by SHA-512 and comes from a URL the player configured, so
      * its host can serve nothing the manifest could not already point at elsewhere. That is
-     * what lets a panel serve its own uploads without every player approving it by hand. Kept
+     * what lets the manifest host serve its own files without every player approving it by hand. Kept
      * apart from {@link #plusServer} because that one also allows plain HTTP.
      */
     public HostAllowlist plusManifestHost(String manifestUrl) {

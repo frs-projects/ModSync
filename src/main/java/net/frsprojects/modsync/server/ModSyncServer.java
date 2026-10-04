@@ -21,7 +21,7 @@ import java.util.function.Supplier;
  * Dedicated-server half of ModSync: keeps the server's own mods in line with the manifest in
  * {@code config/modsync-server.json}.
  *
- * <p>The check runs on a background thread as the server starts, so a slow panel never holds up
+ * <p>The check runs on a background thread as the server starts, so a slow manifest host never holds up
  * startup, and again on {@code /modsync update}. Anything it stages is applied once the server
  * has stopped: the running server already has its mods loaded, and swapping them under it would
  * change nothing until the next start anyway.

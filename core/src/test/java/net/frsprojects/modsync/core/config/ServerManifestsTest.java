@@ -66,11 +66,11 @@ class ServerManifestsTest {
     @Test
     void anArrayOfObjectsIsAcceptedToo() throws IOException {
         ServerManifests servers = ServerManifests.load(write("{\"servers\": [\n"
-            + "  { \"eub1.taczbg.lan\": \"https://control.taczbg.net/p/modsync/taczbg.json\" }\n"
+            + "  { \"play.example.net\": \"https://packs.example.net/main.json\" }\n"
             + "]}"));
 
-        assertEquals("https://control.taczbg.net/p/modsync/taczbg.json",
-            servers.urlFor("eub1.taczbg.lan", 25565));
+        assertEquals("https://packs.example.net/main.json",
+            servers.urlFor("play.example.net", 25565));
     }
 
     /** Silently ignoring a malformed entry looks exactly like a server with no manifest. */
@@ -113,15 +113,15 @@ class ServerManifestsTest {
         Files.writeString(paths.config(), "{\n"
             + "  \"alwaysKeep\": [\"mods/mine.jar\"],\n"
             + "  \"manifestOverrides\": [\n"
-            + "    { \"eub1.taczbg.lan\": \"https://control.taczbg.net/p/modsync/taczbg.json\" }\n"
+            + "    { \"play.example.net\": \"https://packs.example.net/main.json\" }\n"
             + "  ],\n"
             + "  \"curseForgeApiKey\": \"secret\"\n"
             + "}", StandardCharsets.UTF_8);
 
         ServerManifests servers = ServerManifests.loadOrCreate(paths);
 
-        assertEquals("https://control.taczbg.net/p/modsync/taczbg.json",
-            servers.urlFor("eub1.taczbg.lan", 25565));
+        assertEquals("https://packs.example.net/main.json",
+            servers.urlFor("play.example.net", 25565));
         assertEquals(servers, ServerManifests.load(paths.serverManifests()));
         String client = Files.readString(paths.config());
         assertFalse(client.contains("manifestOverrides"), client);
