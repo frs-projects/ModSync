@@ -146,6 +146,19 @@ queries the hosts. A command that silently makes outbound requests is a surprise
 air-gapped or rate-limited export is a normal thing to want. A host being down degrades to
 "fewer URLs filled in", never to a lost export.
 
+**Withheld CurseForge files go through the player's browser, and the hash is still the gate.**
+A `manual` entry names the file's CurseForge page. The client opens it, then polls the
+downloads folder (and `modsync/import/`) once a second, and lets a file into the cache only if
+its SHA-512 (and SHA-1 if given) matches. It copies first and hashes the copy, so a file that
+changes mid-check can never reach the cache unverified. The original is left alone, because
+nothing outside the game directory is ModSync's to delete. Once cached, a `MANUAL` action
+journals exactly like a `RESTORE`, so the journal and applier needed no changes.
+`writeJournal` refuses a plan whose accepted manual files are not all cached, rather than
+writing a `LINK` to a blob that is missing. Which pages may be opened is decided by the
+download allowlist, so a manifest cannot use this to send players to an arbitrary site. The
+field is additive within format v1: older clients ignore it, and the entry is `BLOCKED` for
+them as before.
+
 **Client feedback bypasses the command source.** On Forge 1.20.1 a client command's source is
 the `LocalPlayer`, whose `acceptsSuccess()` reads the `sendCommandFeedback` gamerule — so
 progress would be silently swallowed on any server that turns that rule off. `ClientChat`

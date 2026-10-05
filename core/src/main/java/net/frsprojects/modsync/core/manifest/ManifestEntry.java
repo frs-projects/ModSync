@@ -8,7 +8,7 @@ import java.util.Locale;
  *
  * <p>Fields are nullable as parsed; {@link ManifestCodec} normalizes and validates them,
  * so code downstream of the codec can rely on everything except {@link #desc},
- * {@link #group} and {@link #id} being non-null.
+ * {@link #group}, {@link #id} and {@link #manual} being non-null.
  */
 public record ManifestEntry(
     /** Stable identity across versions, e.g. {@code modrinth:sodium}. Lets an update be
@@ -30,7 +30,9 @@ public record ManifestEntry(
     List<String> mcVersions,
     /** UI grouping, e.g. "Performance". */
     String group,
-    boolean defaultEnabled
+    boolean defaultEnabled,
+    /** Where the player can download this by hand when {@link #urls} is empty, or null. */
+    ManualDownload manual
 ) {
 
     /** The file name this entry lands under, without directories. */

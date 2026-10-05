@@ -25,6 +25,12 @@ public enum ActionKind {
     QUARANTINE_UNLISTED,
     /** Not mentioned, but protected by an alwaysKeep rule or because it is ModSync itself. */
     PROTECTED,
+    /**
+     * Not cached and no URL ModSync may fetch from, but the manifest names a page where the
+     * player can download it in a browser. Once that file is in the cache this places it
+     * exactly like {@link #RESTORE}; until then the sync cannot go ahead with it selected.
+     */
+    MANUAL,
     /** Required, but there is no URL and no cached copy. The join cannot proceed. */
     BLOCKED;
 

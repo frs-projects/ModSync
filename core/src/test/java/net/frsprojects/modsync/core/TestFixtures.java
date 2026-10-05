@@ -2,6 +2,7 @@ package net.frsprojects.modsync.core;
 
 import net.frsprojects.modsync.core.manifest.Hashes;
 import net.frsprojects.modsync.core.manifest.ManifestEntry;
+import net.frsprojects.modsync.core.manifest.ManualDownload;
 import net.frsprojects.modsync.core.manifest.Policy;
 import net.frsprojects.modsync.core.manifest.Side;
 import net.frsprojects.modsync.core.manifest.SyncManifest;
@@ -64,7 +65,18 @@ public final class TestFixtures {
             List.of(),
             List.of(),
             null,
-            policy.defaultSelected());
+            policy.defaultSelected(),
+            null);
+    }
+
+    /** An entry with no URL that the player has to download by hand from a CurseForge page. */
+    public static ManifestEntry manualEntry(String path, String content, Policy policy) {
+        ManifestEntry e = entry(path, content, policy, List.of());
+        return new ManifestEntry(e.id(), e.label(), e.desc(), e.path(), e.size(), e.hashes(),
+            e.urls(), e.policy(), e.side(), e.loaders(), e.mcVersions(), e.group(),
+            e.defaultEnabled(),
+            new ManualDownload("https://www.curseforge.com/minecraft/mc-mods/x/download/1",
+                e.fileName()));
     }
 
     public static SyncManifest manifest(List<ManifestEntry> entries) {

@@ -135,6 +135,7 @@ public final class ManifestCodec {
         }
 
         List<String> urls = parseUrls(o, where);
+        ManualDownload manual = parseManual(o, where);
 
         return new ManifestEntry(
             optText(o, "id", null),
@@ -149,7 +150,8 @@ public final class ManifestCodec {
             parseStringList(o, "loaders", where),
             parseStringList(o, "mcVersions", where),
             optText(o, "group", null),
-            optBooleanOr(o, "defaultEnabled", policy.defaultSelected()));
+            optBooleanOr(o, "defaultEnabled", policy.defaultSelected()),
+            manual);
     }
 
     private static Hashes parseHashes(JsonObject o, String where, Policy policy)
@@ -200,6 +202,36 @@ public final class ManifestCodec {
             }
         }
         return List.copyOf(urls);
+    }
+
+    /**
+     * Reads the optional {@code manual} object. Only its shape is checked here; whether the
+     * client is willing to open the URL is {@code HostAllowlist}'s call, made when it does.
+     */
+    private static ManualDownload parseManual(JsonObject o, String where)
+            throws ManifestException {
+        if (!o.has("manual") || o.get("manual").isJsonNull()) {
+            return null;
+        }
+        if (!o.get("manual").isJsonObject()) {
+            throw new ManifestException(where + ".manual must be an object");
+        }
+        JsonObject m = o.getAsJsonObject("manual");
+        String url = reqString(m, "url", where + ".manual").trim();
+        if (url.length() > MAX_URL_LENGTH) {
+            throw new ManifestException(where + ".manual.url is an over-long URL");
+        }
+        // It is opened in the player's browser, so a plain-http page could be swapped for
+        // anything on the way; the file is hash-checked, the page they read is not.
+        if (!url.regionMatches(true, 0, "https://", 0, 8)) {
+            throw new ManifestException(where + ".manual.url must be an https:// URL, got '"
+                + url + "'");
+        }
+        String fileName = optText(m, "fileName", null);
+        if (fileName != null && (fileName.contains("/") || fileName.contains("\\"))) {
+            throw new ManifestException(where + ".manual.fileName must be a bare file name");
+        }
+        return new ManualDownload(url, fileName);
     }
 
     /**
@@ -420,6 +452,15 @@ public final class ManifestCodec {
             JsonArray urls = new JsonArray();
             e.urls().forEach(urls::add);
             j.add("urls", urls);
+        }
+
+        if (e.manual() != null) {
+            JsonObject manual = new JsonObject();
+            manual.addProperty("url", e.manual().url());
+            if (e.manual().fileName() != null) {
+                manual.addProperty("fileName", e.manual().fileName());
+            }
+            j.add("manual", manual);
         }
 
         j.addProperty("policy", lower(e.policy()));

@@ -4,6 +4,7 @@ import net.frsprojects.modsync.core.apply.JournalApplier;
 import net.frsprojects.modsync.core.config.ServerSyncConfig;
 import net.frsprojects.modsync.core.diff.SyncAction;
 import net.frsprojects.modsync.core.diff.SyncPlan;
+import net.frsprojects.modsync.core.manifest.ManifestEntry;
 import net.frsprojects.modsync.core.manifest.Side;
 import net.frsprojects.modsync.core.manifest.SyncManifest;
 import net.frsprojects.modsync.core.net.DownloadProgress;
@@ -14,6 +15,7 @@ import net.frsprojects.modsync.core.security.HostAllowlist;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -41,7 +43,10 @@ public final class ServerUpdater {
         UP_TO_DATE,
         /** Changes are downloaded and journalled, waiting for the server to stop. */
         STAGED,
-        /** A required file has no URL and is not cached; nothing was staged. */
+        /**
+         * A required file has no URL and is not cached, or has to be downloaded by hand and
+         * is not in {@code modsync/import/} yet; nothing was staged.
+         */
         BLOCKED,
         /** The manifest or a download failed; nothing was staged. */
         FAILED
@@ -113,7 +118,12 @@ public final class ServerUpdater {
                 + details.size() + " required file(s) cannot be obtained", details);
         }
 
-        Set<String> accepted = plan.defaultSelection();
+        Set<String> accepted = new LinkedHashSet<>(plan.defaultSelection());
+        List<String> skipped = new ArrayList<>();
+        Result manual = importManual(session, accepted, pack, skipped);
+        if (manual != null) {
+            return manual;
+        }
         if (accepted.isEmpty()) {
             discardPending();
             return new Result(Outcome.UP_TO_DATE, pack + " is up to date", List.of());
@@ -146,8 +156,58 @@ public final class ServerUpdater {
             discardPending();
             return new Result(Outcome.UP_TO_DATE, pack + " is up to date", List.of());
         }
+        List<String> details = new ArrayList<>(describeChanges(plan, accepted));
+        details.addAll(skipped);
         return new Result(Outcome.STAGED, pack + ": " + accepted.size()
-            + " change(s) staged, applied when the server stops", describeChanges(plan, accepted));
+            + " change(s) staged, applied when the server stops", details);
+    }
+
+    /**
+     * Picks up hand-downloaded files from {@code modsync/import/}. A server has no browser, so
+     * the admin downloads them and drops them there.
+     *
+     * <p>A missing required file blocks the update, as any unobtainable file would. A missing
+     * recommended one is left out of {@code accepted} instead: holding back a whole update for
+     * a file the server could run without would be worse than skipping it until it arrives.
+     *
+     * @param skipped receives a line per recommended file left out
+     * @return a BLOCKED result, or null to carry on
+     */
+    private Result importManual(SyncSession session, Set<String> accepted, String pack,
+            List<String> skipped) {
+        List<SyncAction> manual = session.plan().manual(accepted);
+        if (manual.isEmpty()) {
+            return null;
+        }
+        try {
+            Files.createDirectories(paths.importDir());
+        } catch (IOException ignored) {
+            // Only means the admin has to create it; the message below names it.
+        }
+        ManualImports imports = session.manualImports(accepted);
+        imports.scan(List.of(paths.importDir()));
+
+        String dir = paths.gameDir().relativize(paths.importDir()).toString().replace('\\', '/');
+        List<String> missing = new ArrayList<>();
+        for (SyncAction a : manual) {
+            ManifestEntry e = a.entry();
+            if (imports.isDone(e)) {
+                continue;
+            }
+            String line = a.label() + ": download " + e.manual().url() + " into " + dir + "/";
+            if (a.isMandatory()) {
+                missing.add("! " + line);
+            } else {
+                accepted.remove(a.path());
+                skipped.add("? skipped " + line);
+            }
+        }
+        if (missing.isEmpty()) {
+            return null;
+        }
+        missing.add("Then run /modsync update, or restart the server.");
+        return new Result(Outcome.BLOCKED, pack + " cannot be applied: "
+            + (missing.size() - 1) + " required file(s) have to be downloaded by hand", missing);
     }
 
     /** Whether a journal is waiting to be applied. */

@@ -129,6 +129,14 @@ public final class ModSyncPaths {
         return exportDir().resolve(sanitize(name));
     }
 
+    /**
+     * Drop folder for files that have to be downloaded by hand. The client also watches the
+     * player's downloads folder; a dedicated server has only this.
+     */
+    public Path importDir() {
+        return root.resolve("import");
+    }
+
     /** Cached path -> hash records, so a rejoin does not rehash every jar. */
     public Path stateCache() {
         return root.resolve("filestate.tsv");

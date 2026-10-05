@@ -95,6 +95,40 @@ class ExportServiceTest {
     }
 
     @Test
+    void aManualOnlyFileIsExportedWithItsPageAndCountsAsResolved() throws Exception {
+        TestFixtures.writeFile(gameDir, "mods/jei.jar", "jei");
+        TestFixtures.writeFile(gameDir, "mods/b.jar", "b");
+        List<String> messages = new java.util.ArrayList<>();
+        int[] seen = new int[3];
+
+        Path output = ExportService.export(
+            new ExportRequest(gameDir, "mods", null, null,
+                List.of(stub(Map.of("mods/jei.jar", new ModMetadataLookup.Resolved(
+                    "curseforge:238222", null, new net.frsprojects.modsync.core.manifest
+                        .ManualDownload("https://www.curseforge.com/x/download/1", "jei.jar")))))),
+            new ExportProgress() {
+                @Override public void message(String text) {
+                    messages.add(text);
+                }
+
+                @Override public void finished(Path out, int total, int resolved, int unresolved) {
+                    seen[0] = total;
+                    seen[1] = resolved;
+                    seen[2] = unresolved;
+                }
+            });
+
+        ManifestEntry jei = read(output).files().stream()
+            .filter(e -> e.path().equals("mods/jei.jar")).findFirst().orElseThrow();
+        assertTrue(jei.urls().isEmpty());
+        assertEquals("https://www.curseforge.com/x/download/1", jei.manual().url());
+        assertEquals(2, seen[0]);
+        assertEquals(1, seen[1]);
+        assertEquals(1, seen[2]);
+        assertTrue(messages.stream().anyMatch(m -> m.contains("browser")), messages.toString());
+    }
+
+    @Test
     void reportsResolvedAndUnresolvedCounts() throws Exception {
         TestFixtures.writeFile(gameDir, "mods/a.jar", "a");
         TestFixtures.writeFile(gameDir, "mods/b.jar", "b");

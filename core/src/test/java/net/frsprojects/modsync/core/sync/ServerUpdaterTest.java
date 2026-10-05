@@ -86,7 +86,7 @@ class ServerUpdaterTest {
         return new ManifestEntry(null, path.substring(path.lastIndexOf('/') + 1), null, path,
             content.getBytes(StandardCharsets.UTF_8).length,
             Hashes.ofSha512(TestFixtures.sha512Of(content)), List.of(base + url), policy, side,
-            List.of(), List.of(), null, policy.defaultSelected());
+            List.of(), List.of(), null, policy.defaultSelected(), null);
     }
 
     private ServerUpdater updater() {
@@ -187,6 +187,56 @@ class ServerUpdaterTest {
         assertEquals(ServerUpdater.Outcome.FAILED, result.outcome());
         assertEquals(1, result.details().size(), result.details().toString());
         assertFalse(updater.hasPending());
+    }
+
+    @Test
+    void aMissingManualFileBlocksAndSaysWhereToPutIt() throws IOException {
+        configure(List.of());
+        publish(List.of(
+            served("mods/core.jar", "core", Policy.REQUIRE, Side.BOTH),
+            TestFixtures.manualEntry("mods/jei.jar", "jei", Policy.REQUIRE)));
+
+        ServerUpdater updater = updater();
+        ServerUpdater.Result result = updater.check(progress::add);
+
+        assertEquals(ServerUpdater.Outcome.BLOCKED, result.outcome(), result.summary());
+        assertTrue(result.details().get(0).contains("curseforge.com"), result.details().toString());
+        assertTrue(result.details().get(0).contains("modsync/import/"),
+            result.details().toString());
+        assertTrue(Files.isDirectory(paths.importDir()), "the admin needs a folder to drop into");
+        assertFalse(updater.hasPending());
+    }
+
+    @Test
+    void aManualFileDroppedIntoImportIsInstalled() throws IOException {
+        configure(List.of());
+        publish(List.of(TestFixtures.manualEntry("mods/jei.jar", "jei", Policy.REQUIRE)));
+        Files.createDirectories(paths.importDir());
+        Files.writeString(paths.importDir().resolve("jei-1.21.1.jar"), "jei");
+
+        ServerUpdater updater = updater();
+        assertEquals(ServerUpdater.Outcome.STAGED, updater.check(progress::add).outcome());
+        updater.applyPending();
+
+        assertEquals("jei", Files.readString(gameDir.resolve("mods/jei.jar")));
+    }
+
+    @Test
+    void aMissingRecommendedManualFileIsSkippedNotBlocking() throws IOException {
+        configure(List.of());
+        publish(List.of(
+            served("mods/core.jar", "core", Policy.REQUIRE, Side.BOTH),
+            TestFixtures.manualEntry("mods/jei.jar", "jei", Policy.RECOMMEND)));
+
+        ServerUpdater updater = updater();
+        ServerUpdater.Result result = updater.check(progress::add);
+
+        assertEquals(ServerUpdater.Outcome.STAGED, result.outcome(), result.summary());
+        assertTrue(result.details().stream().anyMatch(d -> d.contains("skipped")),
+            result.details().toString());
+        updater.applyPending();
+        assertTrue(Files.exists(gameDir.resolve("mods/core.jar")));
+        assertFalse(Files.exists(gameDir.resolve("mods/jei.jar")));
     }
 
     @Test

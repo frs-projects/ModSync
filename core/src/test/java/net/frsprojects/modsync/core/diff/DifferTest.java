@@ -188,6 +188,64 @@ class DifferTest {
     }
 
     @Test
+    void anEntryWithOnlyAManualPageNeedsTheBrowserRatherThanBlocking() throws IOException {
+        SyncManifest m = TestFixtures.manifest(
+            List.of(TestFixtures.manualEntry("mods/a.jar", "content-a", Policy.REQUIRE)));
+        SyncPlan p = plan(m, KeepRules.defaults());
+
+        SyncAction a = p.actions().get(0);
+        assertEquals(ActionKind.MANUAL, a.kind());
+        assertTrue(p.canProceed());
+        assertTrue(a.selectedByDefault());
+        assertEquals(0L, a.downloadBytes());
+        assertEquals(List.of(a), p.manual(p.defaultSelection()));
+        assertTrue(p.manual(java.util.Set.of()).isEmpty());
+    }
+
+    @Test
+    void aWrongVersionWithOnlyAManualPageIsManualToo() throws IOException {
+        TestFixtures.writeFile(gameDir, "mods/a.jar", "old");
+        SyncManifest m = TestFixtures.manifest(
+            List.of(TestFixtures.manualEntry("mods/a.jar", "content-a", Policy.REQUIRE)));
+        SyncAction a = plan(m, KeepRules.defaults()).actions().get(0);
+
+        assertEquals(ActionKind.MANUAL, a.kind());
+        assertTrue(a.existing() != null);
+    }
+
+    @Test
+    void aManualFileAlreadyInTheCacheIsSimplyRestored() throws IOException {
+        Path tmp = Files.createTempFile(paths.downloadTemp(), "t", ".tmp");
+        Files.writeString(tmp, "content-a", StandardCharsets.UTF_8);
+        cache.store(tmp, TestFixtures.sha512Of("content-a"));
+
+        SyncManifest m = TestFixtures.manifest(
+            List.of(TestFixtures.manualEntry("mods/a.jar", "content-a", Policy.REQUIRE)));
+        assertEquals(ActionKind.RESTORE, plan(m, KeepRules.defaults()).actions().get(0).kind());
+    }
+
+    @Test
+    void anOptionalManualFileIsOfferedLikeAnyOther() throws IOException {
+        SyncManifest m = TestFixtures.manifest(
+            List.of(TestFixtures.manualEntry("mods/a.jar", "content-a", Policy.OPTIONAL)));
+        assertTrue(plan(m, KeepRules.defaults()).actions().get(0).isOffer());
+    }
+
+    @Test
+    void aManualActionJournalsAsALinkOutOfTheCache() throws IOException {
+        TestFixtures.writeFile(gameDir, "mods/a.jar", "old");
+        SyncManifest m = TestFixtures.manifest(
+            List.of(TestFixtures.manualEntry("mods/a.jar", "content-a", Policy.REQUIRE)));
+        SyncPlan p = plan(m, KeepRules.defaults());
+
+        var ops = p.toJournal(p.defaultSelection(), "test-pack", paths).ops();
+        assertTrue(ops.stream().anyMatch(op -> op.kind()
+            == net.frsprojects.modsync.core.apply.JournalOp.Kind.MOVE));
+        assertTrue(ops.stream().anyMatch(op -> op.kind()
+            == net.frsprojects.modsync.core.apply.JournalOp.Kind.LINK));
+    }
+
+    @Test
     void anOptionalEntryWithNoUrlDoesNotBlockTheJoin() throws IOException {
         SyncManifest m = TestFixtures.manifest(
             List.of(TestFixtures.entry("mods/a.jar", "content-a", Policy.OPTIONAL, List.of())));

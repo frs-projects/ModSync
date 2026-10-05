@@ -58,6 +58,49 @@ class ManifestCodecTest {
         assertEquals("Performance", e.group());
     }
 
+    private static String manualEntry(String manualJson) {
+        return "{\"path\":\"mods/jei.jar\",\"size\":3,"
+            + "\"hashes\":{\"sha512\":\"" + SHA512 + "\"},"
+            + "\"manual\":" + manualJson + "}";
+    }
+
+    @Test
+    void parsesAManualDownload() throws Exception {
+        ManifestEntry e = ManifestCodec.parse(manifestWith(manualEntry(
+            "{\"url\":\"https://www.curseforge.com/minecraft/mc-mods/jei/download/5846880\","
+                + "\"fileName\":\"jei-1.21.1-19.21.0.247.jar\"}"))).files().get(0);
+
+        assertTrue(e.urls().isEmpty());
+        assertEquals("https://www.curseforge.com/minecraft/mc-mods/jei/download/5846880",
+            e.manual().url());
+        assertEquals("jei-1.21.1-19.21.0.247.jar", e.manual().fileName());
+    }
+
+    @Test
+    void manualFileNameIsOptionalAndTheBlockRoundTrips() throws Exception {
+        SyncManifest m = ManifestCodec.parse(manifestWith(manualEntry(
+            "{\"url\":\"https://www.curseforge.com/x/download/1\"}")));
+        assertNull(m.files().get(0).manual().fileName());
+        assertEquals(m, ManifestCodec.parse(ManifestCodec.write(m)));
+    }
+
+    @Test
+    void anEntryWithoutManualHasNone() throws Exception {
+        assertNull(ManifestCodec.parse(manifestWith(fullEntry())).files().get(0).manual());
+    }
+
+    @Test
+    void rejectsABadManualBlock() {
+        assertThrows(ManifestException.class, () -> ManifestCodec.parse(manifestWith(
+            manualEntry("\"https://www.curseforge.com/x/download/1\""))));
+        assertThrows(ManifestException.class, () -> ManifestCodec.parse(manifestWith(
+            manualEntry("{\"fileName\":\"a.jar\"}"))));
+        assertThrows(ManifestException.class, () -> ManifestCodec.parse(manifestWith(
+            manualEntry("{\"url\":\"http://www.curseforge.com/x/download/1\"}"))));
+        assertThrows(ManifestException.class, () -> ManifestCodec.parse(manifestWith(
+            manualEntry("{\"url\":\"https://a.example/x\",\"fileName\":\"../a.jar\"}"))));
+    }
+
     @Test
     void roundTripsThroughWrite() throws Exception {
         SyncManifest original = ManifestCodec.parse(manifestWith(fullEntry()));

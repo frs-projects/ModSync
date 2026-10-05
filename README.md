@@ -48,6 +48,8 @@ asserts the end state is identical each time.
 ## Manifest format
 
 Format version 1. A bare JSON array is the pre-v1 sketch and is rejected by the parser.
+**[docs/manifest-format.md](docs/manifest-format.md)** is the complete field-by-field
+reference for anyone generating manifests.
 
 ```json
 {
@@ -77,6 +79,7 @@ Format version 1. A bare JSON array is the pre-v1 sketch and is rejected by the 
 | `policy` | `require`, `recommend`, `optional`, `forbid` | Whether the player may decline the file |
 | `side` | `client`, `server`, `both` | Where the file belongs |
 | `urls` | list of mirrors | First URL that verifies wins |
+| `manual` | `{ "url", "fileName" }` | Page the player downloads the file from in their browser, for files with no `urls` (see below) |
 | `unlistedPolicy` | `quarantine` (default), `keep` | What happens to files the manifest does not mention |
 
 Before syncing, the player gets one page of tick boxes for `recommend` files (ticked by default)
@@ -97,6 +100,33 @@ To change a choice later, use `/modsync optional` (client-side; a screen for thi
 `<pack>` is the folder name under `modsync/profiles/`, and `<mod>` is the id shown by the list;
 both tab-complete. Removal goes through the normal sync, so the jar is moved to
 `modsync/quarantine/` when Minecraft closes, not deleted.
+
+### Files that must be downloaded in the browser
+
+Many CurseForge authors disable third-party downloads, so ModSync is not allowed to fetch
+their jars. Such an entry carries a `manual` block instead of `urls`:
+
+```json
+"manual": {
+  "url": "https://www.curseforge.com/minecraft/mc-mods/jei/download/5846880",
+  "fileName": "jei-1.21.1-neoforge-19.21.0.247.jar"
+}
+```
+
+After the player clicks **Sync**, a screen lists these files. Clicking one opens its CurseForge
+page in the browser. ModSync watches the downloads folder, and copies each file into its cache
+once one arrives with the right SHA-512. The browser renaming a file does not matter. When
+everything has arrived, the sync carries on by itself. Files can also be dragged onto the game
+window, and **Add folder…** points ModSync at a different downloads folder. The page has to be
+on an [allowed host](#security-model), so a manifest cannot send players to an arbitrary site.
+A file downloaded once is cached for every pack that uses it.
+
+A dedicated server has no browser. It looks in `modsync/import/` instead, and its log lists the
+pages to download from. `/modsync export resolve` writes `manual` blocks for CurseForge files
+whose download is withheld. Building them by hand is described in
+[docs/manifest-format.md](docs/manifest-format.md#manual-downloads).
+
+### Updates
 
 `quarantine` makes the manifest a whitelist, which is what makes updates free: when a pack
 moves from `sodium-0.6.12.jar` to `0.6.13`, the old jar simply becomes unlisted, is moved
@@ -144,6 +174,12 @@ unless the manifest lists it with `"side": "server"` or it matches `alwaysKeep`.
 jars that ended up on the server are moved aside for the same reason. The same applies to
 `config/` if the manifest manages any file in it.
 
+Files the manifest marks for [browser download](#files-that-must-be-downloaded-in-the-browser)
+have to be placed in `modsync/import/` by hand. Until a `require` one is there, the update is
+blocked and the log lists each missing file with the page to download it from. A missing
+`recommend` one is skipped and the rest of the update goes ahead. Drop the files in and run
+`/modsync update`.
+
 If the check fails (manifest host down, bad manifest, a download that does not verify), nothing is
 staged and the server starts with what it has. On Windows, where a running JVM locks its jars,
 the swap is handed to the same helper process the client uses.
@@ -159,8 +195,10 @@ filled in for you.
 ```
 
 The plain form is offline and writes hashes only. Add `resolve` to look each file up on
-Modrinth and CurseForge and fill in its download URL. Anything neither host recognises is
-still exported, just without a `urls` entry, and the command tells you how many need one
+Modrinth and CurseForge and fill in its download URL. A CurseForge file whose author disabled
+third-party downloads gets a `manual` block pointing at its CurseForge page instead, so
+players download it in their browser. Anything neither host recognises is still exported,
+just without a `urls` entry, and the command tells you how many need one
 before the manifest is publishable. A host being down degrades to "fewer URLs filled in",
 never to a lost export.
 
@@ -189,7 +227,7 @@ Pages, an object-storage bucket or your own tooling all work, as long as:
 - it is reachable over **HTTPS** by every player (and by the server, if it syncs too);
 - the file is valid format v1. Start from `/modsync export resolve` and edit the result;
 - every non-`forbid` entry has a `sha512`, a `size` and at least one URL ModSync may download
-  from.
+  from, or a [`manual`](#files-that-must-be-downloaded-in-the-browser) page.
 
 Mods hosted on Modrinth, CurseForge or GitHub can keep their original URLs. Anything else
 (private builds, configs, a jar no public host carries) can sit on the same host as the
@@ -256,6 +294,7 @@ automatically the first time a newer version starts.
 | `parallelDownloads` | `4` | Concurrent downloads (clamped to 1–16) |
 | `autoProbe` | `true` | Probe the server's endpoint automatically when joining |
 | `curseForgeApiKey` | `""` | Personal key for `/modsync export resolve` |
+| `downloadFolders` | `[]` | Extra folders to watch for files downloaded in the browser, on top of the detected downloads folder and `modsync/import/`. `~/` is expanded. **Add folder…** on the sync screen adds to this list |
 
 `alwaysKeep` is the important one. Without it, the first sync to any server sweeps away the
 client-side mods that no server can know about.
@@ -289,7 +328,11 @@ A manifest arrives from a remote server, so it is treated as untrusted input thr
   pre-existing symlinks are all rejected.
 - **Where files may come from.** Downloads are restricted to `modrinth.com`, `curseforge.com`,
   `forgecdn.net`, `github.com` and `githubusercontent.com`, plus anything you add to
-  `approvedHosts`.
+  `approvedHosts`. The same list decides which `manual` pages ModSync will open in your
+  browser.
+- **Files you download by hand are hash-checked like any other.** ModSync copies a file out of
+  your downloads folder only if its SHA-512 matches the manifest. The original is never moved
+  or deleted.
 - **Parser limits, enforced before allocation.** 10,000 files, 512-character paths, 16 URLs per
   entry, 2,048-character URLs, 16 GiB per file. The parser reads field by field off the JSON
   rather than reflecting into a class, so its errors name what an admin actually needs to fix.
@@ -369,6 +412,7 @@ touches stays Gson-free.
 - [x] Diff screen, download progress, and applier hand-off when the game exits
 - [x] Picking `recommend` and `optional` files before syncing, with "don't ask again"
 - [x] Dedicated servers following their own manifest, applied when the server stops
+- [x] Browser downloads for CurseForge files with third-party downloads disabled
 - [ ] A screen for managing optional mods, replacing `/modsync optional` (reachable from the
       mod list via Mod Menu on Fabric and the loader's config-screen hook on Forge/NeoForge)
 - [ ] The server announcing its manifest URL (needs a channel that works before the mod check)

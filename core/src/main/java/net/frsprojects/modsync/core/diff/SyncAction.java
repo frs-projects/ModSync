@@ -48,7 +48,7 @@ public record SyncAction(
     /** Whether this is an optional file being offered, as opposed to one being removed. */
     public boolean isOffer() {
         return isOptional() && (kind == ActionKind.INSTALL || kind == ActionKind.REPLACE
-            || kind == ActionKind.RESTORE);
+            || kind == ActionKind.RESTORE || kind == ActionKind.MANUAL);
     }
 
     /** Bytes this action will pull over the network; zero when it needs none. */

@@ -21,6 +21,7 @@ import net.frsprojects.modsync.core.security.PathSandbox;
 import net.frsprojects.modsync.core.security.SandboxException;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -181,13 +182,35 @@ public final class SyncSession {
         if (wanted.isEmpty()) {
             return List.of();
         }
-        HostAllowlist allowlist = baseAllowlist
-            .plusUserApproved(config.approvedHosts())
-            .plusManifestHost(manifestUrl);
-        try (Downloader downloader = new Downloader(paths, new ContentCache(paths), allowlist,
+        try (Downloader downloader = new Downloader(paths, new ContentCache(paths), allowlist(),
                 config.parallelDownloads(), userAgent)) {
             return downloader.fetchAll(wanted, progress);
         }
+    }
+
+    /**
+     * Where files may come from: the built-in hosts, the player's approved ones and the
+     * manifest's own host. Also decides which {@code manual} pages the client will open in a
+     * browser, so a manifest cannot use that to send the player anywhere it likes.
+     */
+    public HostAllowlist allowlist() {
+        return baseAllowlist
+            .plusUserApproved(config.approvedHosts())
+            .plusManifestHost(manifestUrl);
+    }
+
+    /** Tracks the accepted files the player has to download in a browser. */
+    public ManualImports manualImports(Set<String> accepted) {
+        List<ManifestEntry> wanted = new ArrayList<>();
+        for (SyncAction action : plan.manual(accepted)) {
+            wanted.add(action.entry());
+        }
+        return new ManualImports(paths, wanted);
+    }
+
+    /** The folders a client watches for hand-downloaded files. */
+    public List<Path> downloadFolders() {
+        return DownloadFolders.forClient(config, paths);
     }
 
     /**
@@ -198,6 +221,13 @@ public final class SyncSession {
      * @return the number of journalled operations; zero means there is nothing to apply
      */
     public int writeJournal(Set<String> accepted) throws IOException {
+        // A MANUAL action links out of the cache like a RESTORE, so its file must be there
+        // already; a journal pointing at a missing blob would fail halfway through applying.
+        List<ManifestEntry> missing = manualImports(accepted).pending();
+        if (!missing.isEmpty()) {
+            throw new IOException(missing.size() + " file(s) still have to be downloaded by "
+                + "hand, starting with " + missing.get(0).label());
+        }
         Journal journal = plan.toJournal(accepted, profileId, paths);
         if (journal.isEmpty()) {
             return 0;

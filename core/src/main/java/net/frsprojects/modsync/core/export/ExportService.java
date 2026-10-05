@@ -3,6 +3,7 @@ package net.frsprojects.modsync.core.export;
 import net.frsprojects.modsync.core.config.ModSyncConfig;
 import net.frsprojects.modsync.core.manifest.ManifestCodec;
 import net.frsprojects.modsync.core.manifest.ManifestEntry;
+import net.frsprojects.modsync.core.manifest.ManualDownload;
 import net.frsprojects.modsync.core.manifest.Policy;
 import net.frsprojects.modsync.core.manifest.Side;
 import net.frsprojects.modsync.core.manifest.SyncManifest;
@@ -78,12 +79,17 @@ public final class ExportService {
 
         List<ManifestEntry> entries = new ArrayList<>(candidates.size());
         int withUrl = 0;
+        int manualOnly = 0;
         for (ExportCandidate c : candidates) {
             ModMetadataLookup.Resolved r = resolved.get(c.path());
             String url = r == null ? null : r.url();
             List<String> urls = url == null ? List.of() : List.of(url);
+            // A file with a URL never needs the browser, so the manual page is dropped then.
+            ManualDownload manual = url == null && r != null ? r.manual() : null;
             if (url != null) {
                 withUrl++;
+            } else if (manual != null) {
+                manualOnly++;
             }
             Policy policy = ExportDefaults.policyFor(c.root());
             entries.add(new ManifestEntry(
@@ -99,7 +105,8 @@ public final class ExportService {
                 List.of(),
                 List.of(),
                 null,
-                policy.defaultSelected()));
+                policy.defaultSelected(),
+                manual));
         }
 
         Instant now = Instant.now();
@@ -125,8 +132,15 @@ public final class ExportService {
         Files.createDirectories(output.getParent());
         Files.writeString(output, ManifestCodec.write(manifest), StandardCharsets.UTF_8);
 
-        int unresolved = entries.size() - withUrl;
-        progress.finished(output, entries.size(), withUrl, unresolved);
+        if (manualOnly > 0) {
+            progress.message(manualOnly + " file" + (manualOnly == 1 ? " is" : "s are")
+                + " on CurseForge with third-party downloads disabled. Players will be asked to "
+                + "download " + (manualOnly == 1 ? "it" : "them") + " in their browser.");
+        }
+        // A manual entry is publishable as it is: the client knows how to get it.
+        int resolvedCount = withUrl + manualOnly;
+        int unresolved = entries.size() - resolvedCount;
+        progress.finished(output, entries.size(), resolvedCount, unresolved);
         return output;
     }
 
@@ -164,7 +178,10 @@ public final class ExportService {
             try {
                 lookup.resolve(remaining).forEach((path, r) -> {
                     ModMetadataLookup.Resolved existing = resolved.get(path);
-                    if (existing == null || existing.url() == null) {
+                    // A later host only replaces what an earlier one found if it does better:
+                    // a URL beats a manual page, and a manual page beats nothing.
+                    if (existing == null || existing.url() == null
+                            && (r.url() != null || existing.manual() == null)) {
                         resolved.put(path, r);
                     }
                 });

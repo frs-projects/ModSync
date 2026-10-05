@@ -131,8 +131,11 @@ public final class Differ {
                     "already downloaded");
             }
             if (entry.urls().isEmpty()) {
-                return new SyncAction(ActionKind.BLOCKED, path, entry, null,
-                    "no download URL and not in the cache");
+                return entry.manual() != null
+                    ? new SyncAction(ActionKind.MANUAL, path, entry, null,
+                        "has to be downloaded in your browser")
+                    : new SyncAction(ActionKind.BLOCKED, path, entry, null,
+                        "no download URL and not in the cache");
             }
             return new SyncAction(ActionKind.INSTALL, path, entry, null, "missing");
         }
@@ -142,8 +145,11 @@ public final class Differ {
                 "wrong version; correct one is already downloaded");
         }
         if (entry.urls().isEmpty()) {
-            return new SyncAction(ActionKind.BLOCKED, path, entry, existing,
-                "wrong version and no download URL");
+            return entry.manual() != null
+                ? new SyncAction(ActionKind.MANUAL, path, entry, existing,
+                    "wrong version; the right one has to be downloaded in your browser")
+                : new SyncAction(ActionKind.BLOCKED, path, entry, existing,
+                    "wrong version and no download URL");
         }
         return new SyncAction(ActionKind.REPLACE, path, entry, existing, "out of date");
     }

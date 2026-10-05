@@ -39,7 +39,8 @@ class ModSyncConfigTest {
             List.of("my-cdn.example"),
             8,
             false,
-            "cf-secret-key");
+            "cf-secret-key",
+            List.of("~/Downloads/mc"));
 
         Path file = dir.resolve("modsync.json");
         config.save(file);

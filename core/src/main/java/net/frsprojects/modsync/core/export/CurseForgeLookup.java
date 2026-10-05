@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import net.frsprojects.modsync.core.hash.Murmur2;
+import net.frsprojects.modsync.core.manifest.ManualDownload;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -23,8 +24,11 @@ import java.util.Map;
  * ever needed when a key is configured and lookups were asked for.
  *
  * <p>{@code downloadUrl} is null whenever a project has opted out of third-party downloads,
- * which is common. That is reported as unresolved rather than treated as a failure: the admin
- * still gets the entry, just without a URL.
+ * which is common. Such a file gets a {@link ManualDownload} instead: the project's own
+ * download page for that exact file, which the client opens in the player's browser. Building
+ * that link needs the project's page URL, which the fingerprint response does not carry, so
+ * those projects cost one more batched request. If that request fails the file is still
+ * exported, just with neither a URL nor a page.
  */
 public final class CurseForgeLookup implements ModMetadataLookup {
 
@@ -62,6 +66,8 @@ public final class CurseForgeLookup implements ModMetadataLookup {
         }
 
         Map<String, Resolved> out = new HashMap<>();
+        // Files CurseForge will not hand out, waiting for their project's page URL.
+        Map<Long, List<Pending>> withheld = new LinkedHashMap<>();
         List<Long> prints = new ArrayList<>(pathsByPrint.keySet());
         for (int from = 0; from < prints.size(); from += BATCH) {
             List<Long> batch = prints.subList(from, Math.min(from + BATCH, prints.size()));
@@ -83,13 +89,79 @@ public final class CurseForgeLookup implements ModMetadataLookup {
                     continue;
                 }
                 Long modId = longOrNull(file, "modId");
-                Resolved resolved = new Resolved(
-                    modId == null ? null : "curseforge:" + modId,
-                    string(file, "downloadUrl"));
+                String id = modId == null ? null : "curseforge:" + modId;
+                String url = string(file, "downloadUrl");
+                Resolved resolved = new Resolved(id, url);
                 paths.forEach(p -> out.put(p, resolved));
+
+                Long fileId = longOrNull(file, "id");
+                if (url == null && modId != null && fileId != null) {
+                    withheld.computeIfAbsent(modId, k -> new ArrayList<>())
+                        .add(new Pending(id, fileId, string(file, "fileName"), paths));
+                }
             }
         }
+
+        if (!withheld.isEmpty()) {
+            Map<Long, String> pages;
+            try {
+                pages = projectPages(new ArrayList<>(withheld.keySet()));
+            } catch (IOException e) {
+                // The fingerprint answers are still worth keeping; these files just export
+                // without a page, exactly as they did before manual downloads existed.
+                return out;
+            }
+            withheld.forEach((modId, files) -> {
+                String page = pages.get(modId);
+                if (page == null) {
+                    return;
+                }
+                for (Pending f : files) {
+                    Resolved resolved = new Resolved(f.id(), null,
+                        new ManualDownload(page + "/download/" + f.fileId(), f.fileName()));
+                    f.paths().forEach(p -> out.put(p, resolved));
+                }
+            });
+        }
         return out;
+    }
+
+    private record Pending(String id, long fileId, String fileName, List<String> paths) {}
+
+    /**
+     * Each project's page, e.g. {@code https://www.curseforge.com/minecraft/mc-mods/jei}, by
+     * mod id. Only HTTPS pages are kept: the client refuses to open anything else.
+     */
+    private Map<Long, String> projectPages(List<Long> modIds) throws IOException {
+        Map<Long, String> pages = new HashMap<>();
+        for (int from = 0; from < modIds.size(); from += BATCH) {
+            JsonArray arr = new JsonArray();
+            modIds.subList(from, Math.min(from + BATCH, modIds.size())).forEach(arr::add);
+            JsonObject body = new JsonObject();
+            body.add("modIds", arr);
+
+            JsonElement res = http.post(baseUrl + "/mods", body, Map.of("x-api-key", apiKey));
+            if (!res.isJsonObject() || !res.getAsJsonObject().has("data")
+                    || !res.getAsJsonObject().get("data").isJsonArray()) {
+                continue;
+            }
+            for (JsonElement el : res.getAsJsonObject().getAsJsonArray("data")) {
+                if (!el.isJsonObject()) {
+                    continue;
+                }
+                JsonObject mod = el.getAsJsonObject();
+                Long id = longOrNull(mod, "id");
+                if (id == null || !mod.has("links") || !mod.get("links").isJsonObject()) {
+                    continue;
+                }
+                String page = string(mod.getAsJsonObject("links"), "websiteUrl");
+                if (page == null || !page.startsWith("https://")) {
+                    continue;
+                }
+                pages.put(id, page.endsWith("/") ? page.substring(0, page.length() - 1) : page);
+            }
+        }
+        return pages;
     }
 
     private static List<JsonObject> exactMatches(JsonElement res) {

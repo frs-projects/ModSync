@@ -36,7 +36,12 @@ public record ModSyncConfig(
      * into download URLs. Empty means CurseForge is not queried. This is a secret: it belongs
      * to the person who requested it, not to the pack.
      */
-    String curseForgeApiKey
+    String curseForgeApiKey,
+    /**
+     * Extra folders to watch for files the player downloads by hand, before the detected
+     * downloads folder. {@code ~/} is expanded. Empty means auto-detect only.
+     */
+    List<String> downloadFolders
 ) {
 
     public static final int CURRENT_FORMAT_VERSION = 1;
@@ -64,7 +69,8 @@ public record ModSyncConfig(
             List.of(),
             4,
             true,
-            "");
+            "",
+            List.of());
     }
 
     public static ModSyncConfig load(Path file) throws IOException {
@@ -91,7 +97,8 @@ public record ModSyncConfig(
                 o.has("parallelDownloads") ? o.get("parallelDownloads").getAsInt()
                     : d.parallelDownloads())),
             o.has("autoProbe") ? o.get("autoProbe").getAsBoolean() : d.autoProbe(),
-            optString(o, "curseForgeApiKey", d.curseForgeApiKey()));
+            optString(o, "curseForgeApiKey", d.curseForgeApiKey()),
+            stringList(o, "downloadFolders", d.downloadFolders()));
     }
 
     /**
@@ -105,6 +112,17 @@ public record ModSyncConfig(
             return d;
         }
         return load(file);
+    }
+
+    /** This config with one more {@link #downloadFolders} entry, unless it is already there. */
+    public ModSyncConfig withDownloadFolder(String folder) {
+        if (downloadFolders.contains(folder)) {
+            return this;
+        }
+        List<String> folders = new ArrayList<>(downloadFolders);
+        folders.add(folder);
+        return new ModSyncConfig(formatVersion, alwaysKeep, approvedHosts, parallelDownloads,
+            autoProbe, curseForgeApiKey, List.copyOf(folders));
     }
 
     public void save(Path file) throws IOException {
@@ -124,6 +142,10 @@ public record ModSyncConfig(
 
         o.addProperty("autoProbe", autoProbe);
         o.addProperty("curseForgeApiKey", curseForgeApiKey);
+
+        JsonArray folders = new JsonArray();
+        downloadFolders.forEach(folders::add);
+        o.add("downloadFolders", folders);
 
         Files.createDirectories(file.getParent());
         Path tmp = file.resolveSibling(file.getFileName() + ".tmp");

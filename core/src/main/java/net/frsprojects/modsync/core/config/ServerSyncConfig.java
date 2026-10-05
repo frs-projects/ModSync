@@ -64,7 +64,7 @@ public record ServerSyncConfig(
     /** The settings {@code SyncSession} reads, in the shape it reads them. */
     public ModSyncConfig toSyncConfig() {
         return new ModSyncConfig(ModSyncConfig.CURRENT_FORMAT_VERSION, alwaysKeep, approvedHosts,
-            parallelDownloads, false, "");
+            parallelDownloads, false, "", List.of());
     }
 
     public static ServerSyncConfig load(Path file) throws IOException {

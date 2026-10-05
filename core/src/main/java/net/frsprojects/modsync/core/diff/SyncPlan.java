@@ -47,6 +47,13 @@ public record SyncPlan(SyncManifest manifest, List<SyncAction> actions) {
         return actions.stream().filter(a -> a.kind().needsDownload()).toList();
     }
 
+    /** Accepted actions the player has to download in a browser before the sync can run. */
+    public List<SyncAction> manual(Set<String> accepted) {
+        return actions.stream()
+            .filter(a -> a.kind() == ActionKind.MANUAL && accepted.contains(a.path()))
+            .toList();
+    }
+
     /**
      * Converts accepted actions into a journal.
      *
@@ -84,7 +91,9 @@ public record SyncPlan(SyncManifest manifest, List<SyncAction> actions) {
                     dirs.add(parentOf(action.path()));
                     links.add(JournalOp.link(action.entry().hashes().sha512(), action.path()));
                 }
-                case INSTALL, RESTORE -> {
+                case INSTALL, RESTORE, MANUAL -> {
+                    // A MANUAL file is in the cache by now, put there by the player's browser
+                    // download, so it is placed exactly as a RESTORE is.
                     // RESTORE with an existing file still displaces it first: the content
                     // differs, so the old file is the user's and must not simply vanish.
                     if (action.existing() != null) {

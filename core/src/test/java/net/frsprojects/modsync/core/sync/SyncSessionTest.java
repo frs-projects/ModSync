@@ -142,6 +142,34 @@ class SyncSessionTest {
         assertFalse(Files.exists(paths.journal()));
     }
 
+    @Test
+    void aManualFileMustBeImportedBeforeTheJournalIsWritten() throws IOException {
+        ManifestEntry entry = TestFixtures.manualEntry("mods/jei.jar", "jei", Policy.REQUIRE);
+        serve("/manifest.json", 200, ManifestCodec.write(TestFixtures.manifest(List.of(entry))));
+
+        SyncSession session = prepare();
+        var accepted = session.plan().defaultSelection();
+        assertTrue(session.download(accepted, DownloadProgress.NONE).isEmpty(),
+            "nothing for the downloader to do");
+        IOException e = assertThrows(IOException.class, () -> session.writeJournal(accepted));
+        assertTrue(e.getMessage().contains("by hand"), e.getMessage());
+        assertFalse(Files.exists(paths.journal()));
+
+        Path dropped = Files.writeString(gameDir.resolve("jei (1).jar"), "jei");
+        assertEquals(List.of(entry), session.manualImports(accepted).offer(List.of(dropped)));
+        assertTrue(session.writeJournal(accepted) > 0);
+        new JournalApplier(paths).applyPending();
+        assertEquals("jei", Files.readString(gameDir.resolve("mods/jei.jar")));
+    }
+
+    @Test
+    void manualPagesAreCheckedAgainstTheDownloadAllowlist() throws IOException {
+        serve("/manifest.json", 200, ManifestCodec.write(TestFixtures.manifest(List.of())));
+        HostAllowlist allowlist = prepare().allowlist();
+        assertTrue(allowlist.isAllowed("https://www.curseforge.com/minecraft/mc-mods/x/download/1"));
+        assertFalse(allowlist.isAllowed("https://evil.example/download"));
+    }
+
     /** The helper is a separate JVM with only ModSync's classes on its classpath. */
     @Test
     void theApplierRunsAsItsOwnProcess() throws Exception {
