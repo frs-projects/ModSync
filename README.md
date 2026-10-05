@@ -202,6 +202,23 @@ update, replace the file: the next join diffs against the new version. Keep old 
 working until players have moved on, or a client that fetched the old manifest moments earlier
 fails its download and has to rejoin.
 
+### modsync-web
+
+[modsync-web](https://github.com/frs-projects/modsync-web) is a standalone web app that
+builds, publishes and serves manifests, so nobody has to edit the JSON by hand. Its admin panel
+adds files from Modrinth and CurseForge search, from an HTTPS URL, or by upload (for jars and
+configs no mod site carries), and can import a `/modsync export resolve` manifest to start a
+pack from. It checks files for updates daily.
+
+Publishing freezes the pack into a release, and players always get the live one, so edits change
+nothing until you publish again and any earlier release can be rolled back to. Publishing is
+refused for a manifest the client would reject, and warns about download hosts the client does
+not trust by default. Each pack is served at `/manifests/<pack>.json`, which is the URL to put in
+`config/modsync-servers.json`. Uploads are served from the same host, so they are trusted
+automatically when the app runs over HTTPS.
+
+It ships as a Docker image; see its README for deployment.
+
 ## Configuration
 
 Two files, both created the first time the game starts. They are separate because one is meant
