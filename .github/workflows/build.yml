@@ -71,11 +71,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # A tag that disagrees with mod.version would publish jars named after a different
-      # version than the release, so refuse it rather than ship the mismatch.
+      # version than the release, so refuse it rather than ship the mismatch. Any non-digit
+      # prefix on the tag (v, v., release-) is ignored; only the version number must match.
       - name: Check the tag matches mod.version
         run: |
           version=$(grep '^mod.version=' gradle.properties | cut -d= -f2)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+          tag_version=$(echo "$GITHUB_REF_NAME" | sed 's/^[^0-9]*//')
+          if [ "$tag_version" != "$version" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match mod.version=$version"
             exit 1
           fi
