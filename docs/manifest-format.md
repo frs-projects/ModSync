@@ -127,6 +127,11 @@ never deleted, unless they match the player's `alwaysKeep` globs.
 This is how updates work: list `sodium-0.6.13.jar` instead of `sodium-0.6.12.jar`, and the old
 jar becomes unlisted and is moved aside.
 
+ModSync updates itself the same way. Its own jar is normally protected, but when a manifest lists
+a `mods/modsync*.jar` with policy `require`, every other ModSync jar in `mods/` is moved aside,
+even under `unlistedPolicy: "keep"` and even if an `alwaysKeep` glob matches it. A `recommend` or
+`optional` ModSync, or one that has to be downloaded by hand, does not displace the old jar.
+
 ### Download hosts
 
 The client downloads only over HTTPS, and only from:

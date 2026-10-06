@@ -86,6 +86,15 @@ public final class ModSyncPaths {
         return root.resolve("pending.tsv");
     }
 
+    /**
+     * Where the detached applier runs ModSync's jar from. A copy, because the applier may have
+     * to move the original: when a pack updates ModSync, and Windows locks a jar on the
+     * classpath of a running JVM.
+     */
+    public Path applierDir() {
+        return root.resolve("applier");
+    }
+
     /** Per-pack trust decisions. */
     public Path trustStore() {
         return root.resolve("trust.json");

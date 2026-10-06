@@ -6,6 +6,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -47,10 +49,35 @@ public final class ApplierLauncher {
         Path log = paths.root().resolve("applier.log");
         Files.createDirectories(log.getParent());
         ProcessBuilder pb = new ProcessBuilder(
-            command(currentJava(), classpath, paths, ProcessHandle.current().pid()));
+            command(currentJava(), detach(classpath, paths), paths, ProcessHandle.current().pid()));
         pb.redirectErrorStream(true);
         pb.redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));
         return pb.start();
+    }
+
+    /**
+     * Copies every jar on the classpath into {@link ModSyncPaths#applierDir()}, so the helper
+     * never holds open a jar the journal moves. Directories (a dev run) are used as they are,
+     * and a jar that cannot be copied falls back to the original: a self-update then waits for
+     * the next run, but every other change still applies.
+     */
+    static List<Path> detach(List<Path> classpath, ModSyncPaths paths) {
+        List<Path> detached = new ArrayList<>(classpath.size());
+        for (Path entry : classpath) {
+            if (!Files.isRegularFile(entry)) {
+                detached.add(entry);
+                continue;
+            }
+            Path copy = paths.applierDir().resolve(entry.getFileName());
+            try {
+                Files.createDirectories(copy.getParent());
+                Files.copy(entry, copy, StandardCopyOption.REPLACE_EXISTING);
+                detached.add(copy);
+            } catch (IOException e) {
+                detached.add(entry);
+            }
+        }
+        return detached;
     }
 
     /** The java binary running this process, falling back to {@code java.home}. */

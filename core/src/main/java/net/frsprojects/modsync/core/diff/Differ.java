@@ -63,6 +63,19 @@ public final class Differ {
             actions.add(actionFor(entry, byPath.get(entry.path()), declined));
         }
 
+        // A pack that ships ModSync updates ModSync: the old jar is displaced like any stale
+        // mod, despite the built-in protection and regardless of the unlisted policy, because
+        // two copies of ModSync cannot load together.
+        if (installsModSync(actions)) {
+            for (LocalFile f : local) {
+                if (!claimed.contains(f.path()) && KeepRules.isModSyncJar(f.path())) {
+                    claimed.add(f.path());
+                    actions.add(new SyncAction(ActionKind.QUARANTINE_UNLISTED, f.path(), null, f,
+                        "superseded by the ModSync version this pack ships"));
+                }
+            }
+        }
+
         if (manifest.unlistedPolicy() == UnlistedPolicy.QUARANTINE) {
             Set<String> managedRoots = managedRoots(entries);
             for (LocalFile f : local) {
@@ -118,8 +131,9 @@ public final class Differ {
         }
 
         // Protection wins over a manifest instruction: the user's explicit keep rule is a
-        // stronger signal than a remote server's opinion about their own client mods.
-        if (existing != null && keepRules.isProtected(path)) {
+        // stronger signal than a remote server's opinion about their own client mods. The
+        // one exception is a required ModSync jar, which is ModSync updating itself.
+        if (existing != null && keepRules.isProtected(path) && !isSelfUpdate(entry)) {
             return new SyncAction(ActionKind.PROTECTED, path, entry, existing,
                 keepRules.reasonFor(path));
         }
@@ -152,6 +166,28 @@ public final class Differ {
                     "wrong version and no download URL");
         }
         return new SyncAction(ActionKind.REPLACE, path, entry, existing, "out of date");
+    }
+
+    private static boolean isSelfUpdate(ManifestEntry entry) {
+        return entry.policy() == Policy.REQUIRE && KeepRules.isModSyncJar(entry.path());
+    }
+
+    /**
+     * Whether this plan leaves a required ModSync jar in place. A ModSync that still has to be
+     * fetched by hand, or cannot be fetched at all, does not count: removing the old jar
+     * without a guaranteed replacement would leave the game without ModSync.
+     */
+    private static boolean installsModSync(List<SyncAction> actions) {
+        for (SyncAction a : actions) {
+            if (a.entry() != null && isSelfUpdate(a.entry())
+                && switch (a.kind()) {
+                    case KEEP, INSTALL, REPLACE, RESTORE -> true;
+                    default -> false;
+                }) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

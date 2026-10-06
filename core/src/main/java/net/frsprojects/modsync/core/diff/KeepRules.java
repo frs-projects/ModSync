@@ -75,6 +75,17 @@ public final class KeepRules {
         return false;
     }
 
+    /**
+     * True for a ModSync jar directly in {@code mods/}. Such a jar is protected like the
+     * loader, except against a newer ModSync that the manifest itself installs: then the old
+     * one has to go, or two copies of ModSync would load side by side.
+     */
+    public static boolean isModSyncJar(String relativePath) {
+        String lower = relativePath.toLowerCase(Locale.ROOT);
+        return lower.startsWith("mods/") && lower.indexOf('/', 5) < 0
+            && lower.startsWith("modsync", 5) && lower.endsWith(".jar");
+    }
+
     /** Why a path is protected, for the diff UI. */
     public String reasonFor(String relativePath) {
         String fileName = relativePath.substring(relativePath.lastIndexOf('/') + 1)

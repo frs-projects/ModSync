@@ -338,7 +338,9 @@ A manifest arrives from a remote server, so it is treated as untrusted input thr
   rather than reflecting into a class, so its errors name what an admin actually needs to fix.
 - **Your keep rules beat the server's instructions.** `alwaysKeep`, plus built-in protection
   for ModSync's own jar and the loader, override any manifest. Losing ModSync mid-sync is not
-  recoverable from inside the game.
+  recoverable from inside the game. The one exception is a self-update: when a manifest
+  `require`s a ModSync jar, any other ModSync jar in `mods/` is quarantined, so two copies
+  never load side by side.
 - **Quarantine stays inside the roots the manifest touches.** A pack that only manages `mods/`
   cannot sweep your `shaderpacks/`.
 - **Everything is verified by hash while it streams**, against SHA-512 (and SHA-1 where given).

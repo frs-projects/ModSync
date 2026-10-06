@@ -166,6 +166,46 @@ class DifferTest {
             diff(m, KeepRules.defaults()).get("mods/modsync-0.1.0+1.21.1-neoforge.jar").kind());
     }
 
+    /** A pack that ships a newer ModSync updates it, so the old jar must not linger. */
+    @Test
+    void aRequiredModSyncSupersedesTheOldJar() throws IOException {
+        TestFixtures.writeFile(gameDir, "mods/modsync-0.1.0+1.21.1-neoforge.jar", "old me");
+        SyncManifest m = TestFixtures.manifest(List.of(TestFixtures.entry(
+            "mods/modsync-0.2.0+1.21.1-neoforge.jar", "new me", Policy.REQUIRE)),
+            UnlistedPolicy.KEEP);
+
+        Map<String, SyncAction> actions = diff(m, KeepRules.of(List.of("mods/modsync*")));
+        assertEquals(ActionKind.INSTALL,
+            actions.get("mods/modsync-0.2.0+1.21.1-neoforge.jar").kind());
+        assertEquals(ActionKind.QUARANTINE_UNLISTED,
+            actions.get("mods/modsync-0.1.0+1.21.1-neoforge.jar").kind());
+    }
+
+    @Test
+    void aRequiredModSyncAtTheSamePathIsReplaced() throws IOException {
+        TestFixtures.writeFile(gameDir, "mods/modsync.jar", "old me");
+        SyncManifest m = TestFixtures.manifest(
+            List.of(TestFixtures.entry("mods/modsync.jar", "new me", Policy.REQUIRE)));
+
+        assertEquals(ActionKind.REPLACE,
+            diff(m, KeepRules.defaults()).get("mods/modsync.jar").kind());
+    }
+
+    /** Without a guaranteed replacement, removing the old jar would leave no ModSync at all. */
+    @Test
+    void anOptionalOrUnfetchableModSyncDoesNotDisplaceTheOldJar() throws IOException {
+        TestFixtures.writeFile(gameDir, "mods/modsync-0.1.0.jar", "old me");
+        SyncManifest optional = TestFixtures.manifest(List.of(
+            TestFixtures.entry("mods/modsync-0.2.0.jar", "new me", Policy.RECOMMEND)));
+        SyncManifest blocked = TestFixtures.manifest(List.of(
+            TestFixtures.entry("mods/modsync-0.2.0.jar", "new me", Policy.REQUIRE, List.of())));
+
+        assertEquals(ActionKind.PROTECTED,
+            diff(optional, KeepRules.defaults()).get("mods/modsync-0.1.0.jar").kind());
+        assertEquals(ActionKind.PROTECTED,
+            diff(blocked, KeepRules.defaults()).get("mods/modsync-0.1.0.jar").kind());
+    }
+
     @Test
     void quarantineIsConfinedToRootsTheManifestActuallyTouches() throws IOException {
         TestFixtures.writeFile(gameDir, "resourcepacks/mine.zip", "my pack");
