@@ -305,6 +305,11 @@ have. `servers` keeps working alongside it, so a server with its own manifest st
 join. If it uses the startup manifest, the join finds the pack already up to date and goes
 straight in.
 
+The sync screen takes the place of Minecraft's own title screen. Menu mods that restyle that
+screen, such as Mod Menu, work fine. A mod that swaps in a main menu of its own, one that is not
+Minecraft's title screen underneath, means the startup sync never starts; players then sync
+only when they join a listed server. Check a pack that uses such a mod before relying on this.
+
 0.1.2 kept these URLs as `manifestOverrides` in the client config. They are moved here
 automatically the first time a newer version starts.
 
