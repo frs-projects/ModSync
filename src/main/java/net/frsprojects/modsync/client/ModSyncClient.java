@@ -38,6 +38,9 @@ public final class ModSyncClient {
     private static String mcVersion;
     private static Supplier<List<Path>> modClasspath;
 
+    /** The startup sync is offered once per session, on the first title screen. */
+    private static final AtomicBoolean STARTUP_OFFERED = new AtomicBoolean();
+
     /** Set while ModSync itself re-issues a connect, so the mixin lets that one through. */
     private static boolean bypassNextConnect;
 
@@ -107,10 +110,42 @@ public final class ModSyncClient {
         LOG.info("Checking {} before joining {}:{}", url, address.getHost(), address.getPort());
         String fallbackProfile = ModSyncPaths.sanitize(address.getHost() + "_" + address.getPort());
         Minecraft.getInstance().setScreen(new SyncScreen(parent, new SyncScreen.Target(
-            paths, config, url, fallbackProfile, loader, mcVersion), () -> {
+            paths, config, url, fallbackProfile, loader, mcVersion, false), () -> {
                 bypassNextConnect = true;
                 connect.run();
             }));
+        return true;
+    }
+
+    /**
+     * Called from the {@code Minecraft.setScreen} mixin whenever a title screen is about to
+     * open. The first time, if the pack names a {@code startupManifest}, shows the sync screen
+     * in its place, so singleplayer worlds are opened with the pack's mods too.
+     *
+     * @return true to cancel opening the title screen, because the sync screen was opened
+     */
+    public static boolean interceptTitleScreen(Screen title) {
+        if (paths == null || !STARTUP_OFFERED.compareAndSet(false, true)) {
+            return false;
+        }
+        ModSyncConfig config;
+        String url;
+        try {
+            url = ServerManifests.load(paths.serverManifests()).startupUrl();
+            if (url == null) {
+                return false;
+            }
+            config = ModSyncConfig.load(paths.config());
+        } catch (IOException e) {
+            LOG.error("Not syncing at startup: {}", e.getMessage());
+            return false;
+        }
+
+        LOG.info("Checking {} at startup", url);
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.setScreen(new SyncScreen(title, new SyncScreen.Target(
+            paths, config, url, "startup", loader, mcVersion, true),
+            () -> minecraft.setScreen(title)));
         return true;
     }
 

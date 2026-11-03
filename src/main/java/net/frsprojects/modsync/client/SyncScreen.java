@@ -45,7 +45,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Shown instead of the connect screen when the server has a manifest configured: checks the
  * manifest, asks which recommended and optional files the player wants, shows what would
- * change, downloads on request and journals the swap.
+ * change, downloads on request and journals the swap. When the pack syncs at startup, the same
+ * screen is shown over the title screen instead, and "joining" means returning to it.
  *
  * <p>Files whose authors only allow downloads from CurseForge's own site get one more step
  * before the download: the player opens each one's page in their browser, and the screen
@@ -60,9 +61,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class SyncScreen extends Screen {
 
-    /** Everything needed to run one sync, captured when the player clicked join. */
+    /**
+     * Everything needed to run one sync, captured when the player clicked join, or when the
+     * title screen first opened if {@code startup} is set.
+     */
     public record Target(ModSyncPaths paths, ModSyncConfig config, String manifestUrl,
-            String fallbackProfileId, String loader, String mcVersion) {}
+            String fallbackProfileId, String loader, String mcVersion, boolean startup) {}
 
     private enum State { CHECKING, FAILED, CHOOSE, REVIEW, BLOCKED, MANUAL, DOWNLOADING, READY }
 
@@ -149,7 +153,7 @@ public final class SyncScreen extends Screen {
                 onMain(() -> reviewed(prepared));
             } catch (IOException | RuntimeException e) {
                 LOG.warn("Could not check {}: {}", target.manifestUrl(), e.toString());
-                onMain(() -> failed("Could not check this server's mods:", e.getMessage()));
+                onMain(() -> failed("Could not check " + source() + "'s mods:", e.getMessage()));
             }
         });
     }
@@ -162,7 +166,7 @@ public final class SyncScreen extends Screen {
         if (!plan.canProceed()) {
             selection = new LinkedHashSet<>(plan.defaultSelection());
             state = State.BLOCKED;
-            message = "This server needs files ModSync cannot get:";
+            message = capitalized(source()) + " needs files ModSync cannot get:";
             for (SyncAction a : plan.blocked()) {
                 lines.add(new Line("✕ " + a.label() + " — " + a.reason(), RED));
             }
@@ -193,10 +197,10 @@ public final class SyncScreen extends Screen {
         }
         state = State.CHOOSE;
         message = page.policy() == Policy.RECOMMEND
-            ? "This server recommends these files. Untick any you do not want."
-            : "This server offers these optional files. Tick any you want.";
-        message += " \"Don't ask again\" keeps these choices until the server changes one of"
-            + " the files.";
+            ? capitalized(source()) + " recommends these files. Untick any you do not want."
+            : capitalized(source()) + " offers these optional files. Tick any you want.";
+        message += " \"Don't ask again\" keeps these choices until " + source()
+            + " changes one of the files.";
         rebuild();
     }
 
@@ -546,10 +550,10 @@ public final class SyncScreen extends Screen {
                 button("Cancel", this::back));
             case REVIEW -> addButtons(y,
                 button("Sync", this::startSync),
-                button("Join without syncing", this::joinNow),
+                button(withoutSyncing(), this::joinNow),
                 button("Cancel", this::back));
             case BLOCKED -> addButtons(y,
-                button("Join without syncing", this::joinNow),
+                button(withoutSyncing(), this::joinNow),
                 button("Back", this::back));
             case MANUAL -> {
                 List<Button> row = new ArrayList<>();
@@ -563,11 +567,11 @@ public final class SyncScreen extends Screen {
             }
             case FAILED -> addButtons(y,
                 button("Retry", this::check),
-                button("Join without syncing", this::joinNow),
+                button(withoutSyncing(), this::joinNow),
                 button("Back", this::back));
             case READY -> addButtons(y,
                 button("Quit game", () -> minecraft.stop()),
-                button("Back to server list", this::back));
+                button(target.startup() ? "Later" : "Back to server list", this::back));
         }
     }
 
@@ -610,8 +614,9 @@ public final class SyncScreen extends Screen {
             }
             case READY -> {
                 g.drawCenteredString(font, "Everything is downloaded.", width / 2, y, GREEN);
-                g.drawCenteredString(font,
-                    "ModSync swaps the files in when Minecraft closes. Restart, then join again.",
+                g.drawCenteredString(font, "ModSync swaps the files in when Minecraft closes. "
+                    + (target.startup() ? "Restart to play with them."
+                        : "Restart, then join again."),
                     width / 2, y + LINE + 2, WHITE);
                 return;
             }
@@ -751,11 +756,24 @@ public final class SyncScreen extends Screen {
             }
         }
         long manual = plan.manual(selection).size();
-        return "This server's pack needs changes: " + install + " to install, " + update
+        return (target.startup() ? "This pack" : "This server's pack") + " needs changes: " + install + " to install, " + update
             + " to update, " + remove + " to move aside (nothing is deleted). "
             + mib(download) + " to download"
             + (manual > 0 ? ", plus " + manual + " file(s) you download in your browser" : "")
             + ". Minecraft has to restart afterwards.";
+    }
+
+    /** Who the manifest speaks for, as the player thinks of it. */
+    private String source() {
+        return target.startup() ? "this pack" : "this server";
+    }
+
+    private static String capitalized(String s) {
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    private String withoutSyncing() {
+        return target.startup() ? "Continue without syncing" : "Join without syncing";
     }
 
     private static String choiceDetail(SyncAction a) {

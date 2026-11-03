@@ -2,8 +2,9 @@
 
 A Minecraft mod that keeps a client's `mods/` folder in sync with what a server requires.
 The player joins, sees a diff of what will change, accepts it, and the files are swapped in
-after the game exits. A dedicated server can keep its own `mods/` in line with the same
-manifest.
+after the game exits. A pack with singleplayer content can
+[sync at startup](#syncing-at-startup-for-packs-with-singleplayer-content) instead. A
+dedicated server can keep its own `mods/` in line with the same manifest.
 
 Multi-loader: Fabric, NeoForge and Forge, Minecraft 1.20.1 through 1.21.8.
 
@@ -282,6 +283,28 @@ file is read on every join, so an edit takes effect without restarting the game.
 from the manifest's own host are trusted for download when the manifest URL is `https://`, so
 the host can serve jars of its own (see [Hosting a manifest](#hosting-a-manifest)).
 
+#### Syncing at startup, for packs with singleplayer content
+
+Syncing on join leaves singleplayer worlds running whatever mods the player last had. A pack
+with singleplayer content can sync when the game starts instead, by naming its manifest in
+the same file:
+
+```json
+{
+  "servers": {},
+  "startupManifest": "https://packs.example.net/main.json"
+}
+```
+
+It is off unless the pack sets it (a new file has `"startupManifest": ""`). When it is set,
+the first title screen of each session is replaced by the sync screen, with the same pages of
+tick boxes, review and browser downloads as on join. A pack that is already up to date goes
+straight on to the title screen. After a sync the player quits and restarts, as on join; the
+player can also choose **Continue without syncing** or **Later** and play with the mods they
+have. `servers` keeps working alongside it, so a server with its own manifest still syncs on
+join. If it uses the startup manifest, the join finds the pack already up to date and goes
+straight in.
+
 0.1.2 kept these URLs as `manifestOverrides` in the client config. They are moved here
 automatically the first time a newer version starts.
 
@@ -415,6 +438,7 @@ touches stays Gson-free.
 - [x] Picking `recommend` and `optional` files before syncing, with "don't ask again"
 - [x] Dedicated servers following their own manifest, applied when the server stops
 - [x] Browser downloads for CurseForge files with third-party downloads disabled
+- [x] Syncing at startup instead of on join, opt-in per pack, for singleplayer content
 - [ ] A screen for managing optional mods, replacing `/modsync optional` (reachable from the
       mod list via Mod Menu on Fabric and the loader's config-screen hook on Forge/NeoForge)
 - [ ] The server announcing its manifest URL (needs a channel that works before the mod check)
