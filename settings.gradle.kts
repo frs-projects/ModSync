@@ -9,7 +9,8 @@ pluginManagement {
         maven("https://maven.kikugie.dev/releases") { name = "KikuGie" }
         maven("https://maven.kikugie.dev/snapshots") { name = "KikuGie Snapshots" }
     }
-    includeBuild("build-logic")
+    // The frs-projects/mod-framework submodule: frs.controller, frs.core and the loader plugins.
+    includeBuild("framework")
 }
 
 plugins {

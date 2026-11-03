@@ -46,6 +46,10 @@ so the seam is in place either way.
 
 ## Toolchain
 
+The build logic is the `framework/` submodule ([frs-projects/mod-framework](https://github.com/frs-projects/mod-framework)),
+shared with the other FRS-Projects mods; its README is the reference for the layout and properties.
+Clone with `--recurse-submodules` (or run `git submodule update --init`).
+
 - **Gradle 9.7**, daemon pinned to **Java 25** via `gradle/gradle-daemon-jvm.properties`.
   Loom refuses to set up Minecraft when the daemon JVM is older than the version Minecraft
   requires, and 26.x wants Java 25 — so the daemon must be the newest in the matrix even
@@ -53,7 +57,7 @@ so the seam is in place either way.
 - **Per-node `options.release`** (17 / 21 / 25) via `java.version` in each node's properties.
 - **`:core` is a plain `java-library` with no Minecraft dependency**, compiled to Java 17
   because 1.20.1 is the floor. It is compiled and tested exactly once, not per node.
-- Gson is `compileOnly` in `:core`: Minecraft bundles it on every loader, so shading it would
+- Gson is `compileOnly` in `:core`, pinned by the framework to 2.10 (what 1.20.1 ships): Minecraft bundles it on every loader, so shading it would
   duplicate a class that is already on the classpath. The standalone applier must therefore
   avoid Gson entirely — its journal format is line-based, not JSON.
 

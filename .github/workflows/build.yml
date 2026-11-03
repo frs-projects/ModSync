@@ -12,85 +12,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  core:
-    name: core (no Minecraft)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          # Loom refuses to set up Minecraft on a daemon older than the version
-          # Minecraft itself requires, so the daemon runs on the newest in the matrix.
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :core:test
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: core-test-results
-          path: core/build/reports/tests/test/
-
-  matrix:
-    name: ${{ matrix.node }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node:
-          - 1.20.1-fabric
-          - 1.20.1-forge
-          - 1.21.1-fabric
-          - 1.21.1-neoforge
-          - 1.21.4-fabric
-          - 1.21.4-neoforge
-          - 1.21.8-fabric
-          - 1.21.8-neoforge
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@v4
-      # `check` runs verifyModMetadata, which is the guard against shipping a jar
-      # that builds but contains no loader metadata.
-      - run: ./gradlew ":${{ matrix.node }}:build" ":${{ matrix.node }}:check"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: modsync-${{ matrix.node }}
-          path: versions/${{ matrix.node }}/build/libs/modsync-*.jar
-
-  release:
-    name: release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [core, matrix]
-    runs-on: ubuntu-latest
+  build:
+    uses: frs-projects/mod-framework/.github/workflows/mod-build.yml@main
     permissions:
       contents: write
-    steps:
-      - uses: actions/checkout@v4
-      # A tag that disagrees with mod.version would publish jars named after a different
-      # version than the release, so refuse it rather than ship the mismatch. Any non-digit
-      # prefix on the tag (v, v., release-) is ignored; only the version number must match.
-      - name: Check the tag matches mod.version
-        run: |
-          version=$(grep '^mod.version=' gradle.properties | cut -d= -f2)
-          tag_version=$(echo "$GITHUB_REF_NAME" | sed 's/^[^0-9]*//')
-          if [ "$tag_version" != "$version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match mod.version=$version"
-            exit 1
-          fi
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: modsync-*
-          path: dist
-          merge-multiple: true
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Sources jars stay on the workflow run; the release carries what players install.
-          find dist -name 'modsync-*.jar' ! -name '*-sources.jar' -print0 \
-            | xargs -0 gh release create "$GITHUB_REF_NAME" --title "ModSync $GITHUB_REF_NAME" \
-                --generate-notes
+    with:
+      mod-id: modsync
+      title: ModSync
+      # Must list exactly the nodes registered in settings.gradle.kts.
+      nodes: >-
+        ["1.20.1-fabric", "1.20.1-forge", "1.21.1-fabric", "1.21.1-neoforge",
+         "1.21.4-fabric", "1.21.4-neoforge", "1.21.8-fabric", "1.21.8-neoforge"]
+    secrets: inherit
