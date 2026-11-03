@@ -32,7 +32,13 @@ import java.util.Map;
 public record ServerManifests(
     int formatVersion,
     /** Manifest URL per server, keyed by {@code host:port} (or just {@code host} for 25565). */
-    Map<String, String> servers
+    Map<String, String> servers,
+    /**
+     * Manifest to sync against when the game starts, before any server is joined; empty means
+     * never. For packs with singleplayer content, whose mods must be right before a world is
+     * opened. Off unless the pack author sets it.
+     */
+    String startupManifest
 ) {
 
     public static final int CURRENT_FORMAT_VERSION = 1;
@@ -43,12 +49,22 @@ public record ServerManifests(
     private static final String COMMENT =
         "Manifest URL per server, keyed by the address as typed in the server list "
             + "(\"play.example.net\" or \"play.example.net:25566\"). Joining a listed server "
-            + "syncs its mods first. Safe to ship in a modpack.";
+            + "syncs its mods first. Set startupManifest to a manifest URL to sync when the "
+            + "game starts instead, for packs with singleplayer content. Safe to ship in a "
+            + "modpack.";
 
     private static final Gson GSON = new GsonBuilder()
         .setPrettyPrinting()
         .disableHtmlEscaping()
         .create();
+
+    public ServerManifests {
+        startupManifest = startupManifest == null ? "" : startupManifest.trim();
+    }
+
+    public ServerManifests(int formatVersion, Map<String, String> servers) {
+        this(formatVersion, servers, "");
+    }
 
     public static ServerManifests empty() {
         return new ServerManifests(CURRENT_FORMAT_VERSION, Map.of());
@@ -82,7 +98,8 @@ public record ServerManifests(
         JsonObject o = parse(file);
         return new ServerManifests(
             o.has("formatVersion") ? o.get("formatVersion").getAsInt() : CURRENT_FORMAT_VERSION,
-            urlMap(o.get("servers"), file, "servers"));
+            urlMap(o.get("servers"), file, "servers"),
+            startupUrl(o.get("startupManifest"), file));
     }
 
     public void save(Path file) throws IOException {
@@ -92,6 +109,7 @@ public record ServerManifests(
         JsonObject map = new JsonObject();
         servers.forEach(map::addProperty);
         o.add("servers", map);
+        o.addProperty("startupManifest", startupManifest);
 
         Files.createDirectories(file.getParent());
         Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
@@ -123,6 +141,23 @@ public record ServerManifests(
             }
         }
         return null;
+    }
+
+    /** The manifest to sync against at startup, or null when startup sync is off. */
+    public String startupUrl() {
+        return startupManifest.isEmpty() ? null : startupManifest;
+    }
+
+    private static String startupUrl(JsonElement el, Path file) throws IOException {
+        if (el == null || el.isJsonNull()) {
+            return "";
+        }
+        if (!el.isJsonPrimitive() || !el.getAsJsonPrimitive().isString()) {
+            // A boolean here is the likely mistake; ignoring it would look like sync being off.
+            throw new IOException("startupManifest in " + file + " must be a manifest URL, "
+                + "like \"https://example.net/manifest.json\", or \"\" for off");
+        }
+        return el.getAsString();
     }
 
     private static Map<String, String> legacyOverrides(Path clientConfig) throws IOException {

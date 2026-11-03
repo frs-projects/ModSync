@@ -147,4 +147,40 @@ class ServerManifestsTest {
         assertEquals("https://e/new.json", servers.urlFor("new.example", 25565));
         assertNull(servers.urlFor("old.example", 25565));
     }
+
+    /** Startup sync is opt-in: a pack has to name the manifest, and a new file has it off. */
+    @Test
+    void startupSyncIsOffUnlessAManifestIsNamed() throws IOException {
+        ModSyncPaths paths = new ModSyncPaths(dir);
+        ServerManifests created = ServerManifests.loadOrCreate(paths);
+        assertNull(created.startupUrl());
+        assertTrue(Files.readString(paths.serverManifests()).contains("\"startupManifest\": \"\""));
+
+        assertNull(ServerManifests.load(write("{\"servers\":{}}")).startupUrl(),
+            "a file from before the key existed");
+        assertNull(ServerManifests.load(write("{\"startupManifest\":\"  \"}")).startupUrl());
+        assertEquals("https://e/pack.json",
+            ServerManifests.load(write("{\"startupManifest\":\" https://e/pack.json \"}"))
+                .startupUrl());
+    }
+
+    @Test
+    void aStartupManifestThatIsNotAUrlFailsLoudly() throws IOException {
+        for (String bad : new String[] {"true", "1", "{}", "[\"https://e/m.json\"]"}) {
+            Path file = write("{\"startupManifest\": " + bad + "}");
+            IOException e = assertThrows(IOException.class, () -> ServerManifests.load(file), bad);
+            assertTrue(e.getMessage().contains("startupManifest"), e.getMessage());
+        }
+    }
+
+    @Test
+    void theStartupManifestRoundTrips() throws IOException {
+        Path file = dir.resolve("modsync-servers.json");
+        ServerManifests servers =
+            new ServerManifests(1, Map.of("a.example", "https://e/a.json"), "https://e/s.json");
+
+        servers.save(file);
+
+        assertEquals(servers, ServerManifests.load(file));
+    }
 }
