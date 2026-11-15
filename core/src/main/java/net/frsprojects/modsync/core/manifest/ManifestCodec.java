@@ -32,6 +32,7 @@ public final class ManifestCodec {
     public static final int MAX_URLS_PER_ENTRY = 16;
     public static final int MAX_URL_LENGTH = 2_048;
     public static final int MAX_TEXT_LENGTH = 4_096;
+    public static final int MAX_MANAGED_PATTERNS = 256;
     /** 16 GiB: larger than any legitimate single game file, small enough to catch nonsense. */
     public static final long MAX_FILE_SIZE = 16L * 1024 * 1024 * 1024;
 
@@ -109,7 +110,28 @@ public final class ManifestCodec {
             optText(o, "packVersion", "0"),
             optInstant(o, "generatedAt"),
             optEnum(o, "unlistedPolicy", UnlistedPolicy.class, UnlistedPolicy.QUARANTINE),
+            parseManaged(o),
             List.copyOf(files));
+    }
+
+    /**
+     * Reads the optional {@code managed} glob list. Whether each pattern's root is a folder
+     * the client lets a server touch is decided with the entry paths, by the sandbox.
+     */
+    private static List<PathGlob> parseManaged(JsonObject o) throws ManifestException {
+        List<String> raw = parseStringList(o, "managed", "manifest");
+        if (raw.size() > MAX_MANAGED_PATTERNS) {
+            throw new ManifestException("managed has " + raw.size()
+                + " patterns, over the limit of " + MAX_MANAGED_PATTERNS);
+        }
+        List<PathGlob> globs = new ArrayList<>(raw.size());
+        for (int i = 0; i < raw.size(); i++) {
+            PathGlob glob = PathGlob.compile(raw.get(i), "managed[" + i + "]");
+            if (!globs.contains(glob)) {
+                globs.add(glob);
+            }
+        }
+        return List.copyOf(globs);
     }
 
     private static ManifestEntry parseEntry(JsonObject o, String where) throws ManifestException {
@@ -151,7 +173,21 @@ public final class ManifestCodec {
             parseStringList(o, "mcVersions", where),
             optText(o, "group", null),
             optBooleanOr(o, "defaultEnabled", policy.defaultSelected()),
-            manual);
+            manual,
+            parseInstall(o, where));
+    }
+
+    private static Install parseInstall(JsonObject o, String where) throws ManifestException {
+        String raw = optString(o, "install", null);
+        if (raw == null || raw.isBlank()) {
+            return Install.EXACT;
+        }
+        Install install = Install.fromJson(raw);
+        if (install == null) {
+            throw new ManifestException(where + ".install '" + raw
+                + "' is not one of [exact, ifMissing]");
+        }
+        return install;
     }
 
     private static Hashes parseHashes(JsonObject o, String where, Policy policy)
@@ -414,6 +450,11 @@ public final class ManifestCodec {
             o.addProperty("generatedAt", manifest.generatedAt().toString());
         }
         o.addProperty("unlistedPolicy", lower(manifest.unlistedPolicy()));
+        if (!manifest.managed().isEmpty()) {
+            JsonArray managed = new JsonArray();
+            manifest.managed().forEach(g -> managed.add(g.pattern()));
+            o.add("managed", managed);
+        }
 
         JsonArray files = new JsonArray();
         for (ManifestEntry e : manifest.files()) {
@@ -465,6 +506,9 @@ public final class ManifestCodec {
 
         j.addProperty("policy", lower(e.policy()));
         j.addProperty("side", lower(e.side()));
+        if (e.install() != Install.EXACT) {
+            j.addProperty("install", e.install().jsonName());
+        }
         if (!e.loaders().isEmpty()) {
             JsonArray a = new JsonArray();
             e.loaders().forEach(a::add);

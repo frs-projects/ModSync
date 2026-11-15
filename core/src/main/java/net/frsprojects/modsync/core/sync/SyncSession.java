@@ -10,6 +10,7 @@ import net.frsprojects.modsync.core.diff.LocalScanner;
 import net.frsprojects.modsync.core.diff.SyncAction;
 import net.frsprojects.modsync.core.diff.SyncPlan;
 import net.frsprojects.modsync.core.manifest.ManifestEntry;
+import net.frsprojects.modsync.core.manifest.PathGlob;
 import net.frsprojects.modsync.core.manifest.Side;
 import net.frsprojects.modsync.core.manifest.SyncManifest;
 import net.frsprojects.modsync.core.net.DownloadProgress;
@@ -120,6 +121,16 @@ public final class SyncSession {
             if (slash > 0) {
                 roots.add(entry.path().substring(0, slash));
             }
+        }
+        // A managed glob can cover a folder no entry uses (to clear out shaderpacks/, say),
+        // so its root is scanned too, and held to the same sandbox roots as entry paths.
+        for (PathGlob glob : manifest.managed()) {
+            if (!PathSandbox.DEFAULT_ROOTS.contains(glob.root())) {
+                throw new IOException("Refusing the manifest at " + manifestUrl + ": managed "
+                    + "pattern '" + glob + "' is outside the folders ModSync may manage "
+                    + new TreeSet<>(PathSandbox.DEFAULT_ROOTS));
+            }
+            roots.add(glob.root());
         }
 
         paths.createDirectories();

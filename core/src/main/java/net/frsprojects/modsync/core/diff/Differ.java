@@ -1,6 +1,8 @@
 package net.frsprojects.modsync.core.diff;
 
+import net.frsprojects.modsync.core.manifest.Install;
 import net.frsprojects.modsync.core.manifest.ManifestEntry;
+import net.frsprojects.modsync.core.manifest.PathGlob;
 import net.frsprojects.modsync.core.manifest.Policy;
 import net.frsprojects.modsync.core.manifest.SyncManifest;
 import net.frsprojects.modsync.core.manifest.UnlistedPolicy;
@@ -22,6 +24,10 @@ import java.util.TreeSet;
  * bookkeeping — {@code sodium-0.6.12.jar} simply becomes unlisted when the manifest moves to
  * {@code 0.6.13}, so the old jar is displaced and the new one installed, and two versions of
  * one mod can never coexist.
+ *
+ * <p>A manifest with a {@code managed} list narrows that whitelist to the paths its globs
+ * match, so a pack can ship {@code config/modx/server.toml} without sweeping every other
+ * mod's config out of {@code config/}.
  */
 public final class Differ {
 
@@ -82,8 +88,8 @@ public final class Differ {
                 if (claimed.contains(f.path())) {
                     continue;
                 }
-                if (!managedRoots.contains(rootOf(f.path()))) {
-                    // Outside every root the manifest touches, so not ModSync's business.
+                if (!isManaged(manifest, managedRoots, f.path())) {
+                    // Outside everything the manifest manages, so not ModSync's business.
                     continue;
                 }
                 if (keepRules.isProtected(f.path())) {
@@ -128,6 +134,13 @@ public final class Differ {
                     "you removed it");
             }
             return new SyncAction(ActionKind.KEEP, path, entry, existing, "up to date");
+        }
+
+        // The pack only seeds this file; whatever is there now is the player's (or the
+        // mod's own rewrite of it), and is not ModSync's to overwrite.
+        if (existing != null && entry.install() == Install.IF_MISSING) {
+            return new SyncAction(ActionKind.KEEP, path, entry, existing,
+                "already present; only placed when missing");
         }
 
         // Protection wins over a manifest instruction: the user's explicit keep rule is a
@@ -184,6 +197,19 @@ public final class Differ {
                     case KEEP, INSTALL, REPLACE, RESTORE -> true;
                     default -> false;
                 }) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isManaged(SyncManifest manifest, Set<String> managedRoots,
+            String path) {
+        if (manifest.managed().isEmpty()) {
+            return managedRoots.contains(rootOf(path));
+        }
+        for (PathGlob glob : manifest.managed()) {
+            if (glob.matches(path)) {
                 return true;
             }
         }

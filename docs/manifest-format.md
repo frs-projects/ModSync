@@ -15,6 +15,7 @@ and a dedicated server fetches it on startup and on `/modsync update`.
   "packVersion": "1.2.3",
   "generatedAt": "2026-10-05T12:00:00Z",
   "unlistedPolicy": "quarantine",
+  "managed": ["mods/*", "config/modx/**"],
   "files": [
     {
       "id": "modrinth:AANobbMI",
@@ -53,6 +54,7 @@ and a dedicated server fetches it on startup and on `/modsync update`.
 | `packVersion` | string | no | `"0"` | Opaque, display only. |
 | `generatedAt` | string | no | — | ISO-8601 instant (`2026-10-05T12:00:00Z`). If it does not parse, it is ignored rather than rejected. |
 | `unlistedPolicy` | `"quarantine"` \| `"keep"` | no | `"quarantine"` | What happens to files the manifest does not mention, within the folders it manages (see [Managed folders](#managed-folders)). |
+| `managed` | array of globs | no | every top-level folder an entry uses | Where `quarantine` applies. See [Managed folders](#managed-folders). At most 256. |
 | `files` | array of [entries](#file-entries) | **yes** | — | At most 10,000. |
 
 A bare top-level JSON array (the pre-v1 sketch) is refused. Unknown fields are ignored, so a
@@ -71,6 +73,7 @@ builder may add its own metadata.
 | `manual` | object | one of `urls` / `manual` | — | A page where the player can download the file in their browser. See [Manual downloads](#manual-downloads). |
 | `policy` | `"require"` \| `"recommend"` \| `"optional"` \| `"forbid"` | no | `"require"` | See [Policies](#policies). |
 | `side` | `"client"` \| `"server"` \| `"both"` | no | `"both"` | Clients take `client` and `both`; a syncing dedicated server takes `server` and `both`. |
+| `install` | `"exact"` \| `"ifMissing"` | no | `"exact"` | See [Install modes](#install-modes). |
 | `id` | string | no | `path` | Stable identity across versions, e.g. `modrinth:AANobbMI` or `curseforge:238222`. It keys remembered optional choices, so keep it constant when the file updates. |
 | `label` | string | no | file name from `path` | Display name. |
 | `desc` | string | no | — | Shown next to recommended/optional files on the choice page. |
@@ -107,6 +110,19 @@ never used.
 A `forbid` entry may omit `hashes` and then matches by `path` alone. If it includes hashes,
 they must be valid.
 
+### Install modes
+
+| Mode | File missing | File present with another hash |
+|---|---|---|
+| `exact` | Installed | Replaced |
+| `ifMissing` | Installed | Left alone |
+
+Use `ifMissing` for configs: many mods rewrite their config on startup, so with `exact` the
+file never keeps its hash and the player's settings are overwritten on every sync. An
+`ifMissing` file is still claimed by the manifest, so it is never quarantined as unlisted.
+
+Older clients ignore `install` and treat every entry as `exact`.
+
 ### Paths
 
 - Forward slashes; backslashes are converted. At most 512 characters.
@@ -119,10 +135,25 @@ they must be valid.
 
 ### Managed folders
 
-With `unlistedPolicy: "quarantine"` the manifest acts as a whitelist **within the top-level
-folders its entries use**. A manifest that only lists files under `mods/` never touches
-`shaderpacks/`. Unlisted files in a managed folder are moved to `modsync/quarantine/<packId>/`,
-never deleted, unless they match the player's `alwaysKeep` globs.
+With `unlistedPolicy: "quarantine"` the manifest acts as a whitelist **within what it
+manages**. Unlisted files there are moved to `modsync/quarantine/<packId>/`, never deleted,
+unless they match the player's `alwaysKeep` globs.
+
+Without `managed`, the manifest manages **every top-level folder its entries use**. A manifest
+that only lists files under `mods/` never touches `shaderpacks/`, but one that ships a single
+`config/` file sweeps every other config the player has. Set `managed` to narrow it:
+
+```json
+"managed": ["mods/*", "config/modx/**"]
+```
+
+- `*` and `?` match within one folder; `**` crosses folders. `config/modx/**` covers
+  `config/modx/a.toml` and `config/modx/sub/b.toml`; `mods/*` does not reach into `mods/sub/`.
+- The first segment must be a literal folder from the [allowed roots](#paths). A pattern
+  outside them rejects the whole manifest, like an entry path.
+- With `managed` set, a folder no pattern covers is left alone even if entries install into it.
+  A pattern may also cover a folder no entry uses, to clear it out.
+- Older clients ignore `managed` and fall back to the per-folder behaviour.
 
 This is how updates work: list `sodium-0.6.13.jar` instead of `sodium-0.6.12.jar`, and the old
 jar becomes unlisted and is moved aside.
@@ -246,6 +277,8 @@ before.
 - [ ] `manual` only on entries without `urls`, and only pointing at the file's CurseForge
       download page, never at a copy you host.
 - [ ] Paths are relative, start in an allowed folder, and are unique.
+- [ ] If the pack ships anything outside `mods/`, `managed` limits the unlisted sweep, and
+      configs players or mods change use `install: "ifMissing"`.
 - [ ] `id` stays the same when a file updates to a new version.
 - [ ] Served over HTTPS. Round-trip check: the client's parser must accept the file
       (`ManifestCodec.parse`).

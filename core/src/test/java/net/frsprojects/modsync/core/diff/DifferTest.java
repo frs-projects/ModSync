@@ -325,4 +325,66 @@ class DifferTest {
         assertEquals(ActionKind.PROTECTED,
             diff(m, KeepRules.of(List.of("mods/iris-*.jar"))).get("mods/iris-1.8.0.jar").kind());
     }
+
+    /** Shipping one config must not sweep every other mod's config out of config/. */
+    @Test
+    void managedGlobsLimitTheUnlistedSweep() throws IOException {
+        TestFixtures.writeFile(gameDir, "config/modx/server.toml", "pack");
+        TestFixtures.writeFile(gameDir, "config/modx/stale.toml", "old");
+        TestFixtures.writeFile(gameDir, "config/modx/sub/deep.toml", "old");
+        TestFixtures.writeFile(gameDir, "config/sodium-options.json", "player");
+        TestFixtures.writeFile(gameDir, "mods/random.jar", "whatever");
+        SyncManifest m = TestFixtures.managedManifest(List.of(
+                TestFixtures.entry("mods/a.jar", "content-a", Policy.REQUIRE),
+                TestFixtures.entry("config/modx/server.toml", "pack", Policy.REQUIRE)),
+            "mods/*", "config/modx/**");
+
+        Map<String, SyncAction> actions = diff(m, KeepRules.defaults());
+        assertEquals(ActionKind.QUARANTINE_UNLISTED, actions.get("mods/random.jar").kind());
+        assertEquals(ActionKind.QUARANTINE_UNLISTED,
+            actions.get("config/modx/stale.toml").kind());
+        assertEquals(ActionKind.QUARANTINE_UNLISTED,
+            actions.get("config/modx/sub/deep.toml").kind());
+        assertFalse(actions.containsKey("config/sodium-options.json"));
+    }
+
+    @Test
+    void aRootLeftOutOfManagedIsNotSwept() throws IOException {
+        TestFixtures.writeFile(gameDir, "mods/random.jar", "whatever");
+        SyncManifest m = TestFixtures.managedManifest(
+            List.of(TestFixtures.entry("mods/a.jar", "content-a", Policy.REQUIRE)),
+            "config/modx/**");
+
+        assertFalse(diff(m, KeepRules.defaults()).containsKey("mods/random.jar"));
+    }
+
+    @Test
+    void managedStillHonoursAlwaysKeep() throws IOException {
+        TestFixtures.writeFile(gameDir, "config/modx/mine.toml", "player");
+        SyncManifest m = TestFixtures.managedManifest(List.of(), "config/modx/**");
+
+        assertEquals(ActionKind.PROTECTED, diff(m, KeepRules.of(List.of("config/modx/mine.*")))
+            .get("config/modx/mine.toml").kind());
+    }
+
+    /** Mods rewrite their configs; an ifMissing file is seeded once and then left alone. */
+    @Test
+    void anIfMissingFileIsNotReplaced() throws IOException {
+        TestFixtures.writeFile(gameDir, "config/modx/client.toml", "player tweaked");
+        SyncManifest m = TestFixtures.manifest(List.of(TestFixtures.ifMissing(
+            TestFixtures.entry("config/modx/client.toml", "pack default", Policy.REQUIRE))));
+
+        SyncAction a = diff(m, KeepRules.defaults()).get("config/modx/client.toml");
+        assertEquals(ActionKind.KEEP, a.kind());
+        assertTrue(plan(m, KeepRules.defaults()).isUpToDate());
+    }
+
+    @Test
+    void anIfMissingFileIsInstalledWhenAbsent() throws IOException {
+        SyncManifest m = TestFixtures.manifest(List.of(TestFixtures.ifMissing(
+            TestFixtures.entry("config/modx/client.toml", "pack default", Policy.REQUIRE))));
+
+        assertEquals(ActionKind.INSTALL,
+            diff(m, KeepRules.defaults()).get("config/modx/client.toml").kind());
+    }
 }

@@ -261,4 +261,58 @@ class ManifestCodecTest {
     void rejectsInvalidJson() {
         assertThrows(ManifestException.class, () -> ManifestCodec.parse("{not json"));
     }
+
+    @Test
+    void parsesManagedAndInstall() throws Exception {
+        String json = "{\"formatVersion\":1,\"managed\":[\"mods/*\",\"config\\\\modx/**\"],"
+            + "\"files\":[{\"path\":\"config/modx/a.toml\",\"install\":\"ifMissing\","
+            + "\"hashes\":{\"sha512\":\"" + SHA512 + "\"}}]}";
+        SyncManifest m = ManifestCodec.parse(json);
+
+        assertEquals(List.of("mods/*", "config/modx/**"),
+            m.managed().stream().map(PathGlob::pattern).toList());
+        assertEquals(Install.IF_MISSING, m.files().get(0).install());
+
+        SyncManifest again = ManifestCodec.parse(ManifestCodec.write(m));
+        assertEquals(m.managed(), again.managed());
+        assertEquals(Install.IF_MISSING, again.files().get(0).install());
+    }
+
+    @Test
+    void installDefaultsToExactAndManagedToEmpty() throws Exception {
+        SyncManifest m = ManifestCodec.parse(manifestWith(fullEntry()));
+        assertEquals(Install.EXACT, m.files().get(0).install());
+        assertTrue(m.managed().isEmpty());
+        assertFalse(ManifestCodec.write(m).contains("\"install\""));
+        assertFalse(ManifestCodec.write(m).contains("\"managed\""));
+    }
+
+    @Test
+    void rejectsBadManagedPatternsAndInstallModes() {
+        for (String bad : List.of("\"/mods/*\"", "\"../x/*\"", "\"*/foo\"", "\"mods\"",
+                "\"C:/mods/*\"", "\"config/../mods/*\"")) {
+            assertThrows(ManifestException.class, () -> ManifestCodec.parse(
+                "{\"formatVersion\":1,\"managed\":[" + bad + "],\"files\":[]}"), bad);
+        }
+        assertThrows(ManifestException.class, () -> ManifestCodec.parse(manifestWith(
+            "{\"path\":\"config/a.toml\",\"install\":\"sometimes\","
+                + "\"hashes\":{\"sha512\":\"" + SHA512 + "\"}}")));
+    }
+
+    @Test
+    void globStarsStayInASegmentAndDoubleStarsCross() throws Exception {
+        PathGlob one = PathGlob.compile("mods/*", "t");
+        assertTrue(one.matches("mods/a.jar"));
+        assertFalse(one.matches("mods/sub/a.jar"));
+
+        PathGlob deep = PathGlob.compile("config/modx/**", "t");
+        assertTrue(deep.matches("config/modx/a.toml"));
+        assertTrue(deep.matches("config/modx/sub/b.toml"));
+        assertFalse(deep.matches("config/modxy/a.toml"));
+        assertFalse(deep.matches("config/other.toml"));
+
+        PathGlob literal = PathGlob.compile("config/a+b(1).toml", "t");
+        assertTrue(literal.matches("config/a+b(1).toml"));
+        assertFalse(literal.matches("config/aab(1).toml"));
+    }
 }

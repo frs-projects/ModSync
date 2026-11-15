@@ -20,8 +20,18 @@ public record SyncManifest(
     String packVersion,
     Instant generatedAt,
     UnlistedPolicy unlistedPolicy,
+    /** Where {@link UnlistedPolicy#QUARANTINE} applies. Empty means every top-level folder
+     *  that an entry uses, which is how manifests behaved before this field existed. */
+    List<PathGlob> managed,
     List<ManifestEntry> files
 ) {
+
+    /** A manifest without a {@code managed} list: unlisted files are judged per root. */
+    public SyncManifest(int formatVersion, String packId, String packName, String packVersion,
+            Instant generatedAt, UnlistedPolicy unlistedPolicy, List<ManifestEntry> files) {
+        this(formatVersion, packId, packName, packVersion, generatedAt, unlistedPolicy,
+            List.of(), files);
+    }
 
     /** The manifest format this build writes. */
     public static final int CURRENT_FORMAT_VERSION = 1;

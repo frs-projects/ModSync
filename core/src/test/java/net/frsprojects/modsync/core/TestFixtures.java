@@ -1,8 +1,10 @@
 package net.frsprojects.modsync.core;
 
 import net.frsprojects.modsync.core.manifest.Hashes;
+import net.frsprojects.modsync.core.manifest.Install;
 import net.frsprojects.modsync.core.manifest.ManifestEntry;
 import net.frsprojects.modsync.core.manifest.ManualDownload;
+import net.frsprojects.modsync.core.manifest.PathGlob;
 import net.frsprojects.modsync.core.manifest.Policy;
 import net.frsprojects.modsync.core.manifest.Side;
 import net.frsprojects.modsync.core.manifest.SyncManifest;
@@ -86,5 +88,27 @@ public final class TestFixtures {
     public static SyncManifest manifest(List<ManifestEntry> entries, UnlistedPolicy unlisted) {
         return new SyncManifest(1, "test-pack", "Test Pack", "1",
             Instant.parse("2026-09-03T00:00:00Z"), unlisted, entries);
+    }
+
+    /** The same entry, placed only when nothing is at its path yet. */
+    public static ManifestEntry ifMissing(ManifestEntry e) {
+        return new ManifestEntry(e.id(), e.label(), e.desc(), e.path(), e.size(), e.hashes(),
+            e.urls(), e.policy(), e.side(), e.loaders(), e.mcVersions(), e.group(),
+            e.defaultEnabled(), e.manual(), Install.IF_MISSING);
+    }
+
+    /** A quarantining manifest whose unlisted sweep is limited to the given globs. */
+    public static SyncManifest managedManifest(List<ManifestEntry> entries, String... globs) {
+        List<PathGlob> managed = new java.util.ArrayList<>();
+        for (String g : globs) {
+            try {
+                managed.add(PathGlob.compile(g, "test"));
+            } catch (net.frsprojects.modsync.core.manifest.ManifestException e) {
+                throw new IllegalArgumentException(e);
+            }
+        }
+        return new SyncManifest(1, "test-pack", "Test Pack", "1",
+            Instant.parse("2026-09-03T00:00:00Z"), UnlistedPolicy.QUARANTINE,
+            List.copyOf(managed), entries);
     }
 }

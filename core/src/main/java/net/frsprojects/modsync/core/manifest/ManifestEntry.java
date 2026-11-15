@@ -32,8 +32,19 @@ public record ManifestEntry(
     String group,
     boolean defaultEnabled,
     /** Where the player can download this by hand when {@link #urls} is empty, or null. */
-    ManualDownload manual
+    ManualDownload manual,
+    /** Whether an existing file at {@link #path} is held to the hash or left alone. */
+    Install install
 ) {
+
+    /** An entry installed {@link Install#EXACT exactly}, as before {@code install} existed. */
+    public ManifestEntry(String id, String label, String desc, String path, long size,
+            Hashes hashes, List<String> urls, Policy policy, Side side, List<String> loaders,
+            List<String> mcVersions, String group, boolean defaultEnabled,
+            ManualDownload manual) {
+        this(id, label, desc, path, size, hashes, urls, policy, side, loaders, mcVersions,
+            group, defaultEnabled, manual, Install.EXACT);
+    }
 
     /** The file name this entry lands under, without directories. */
     public String fileName() {
