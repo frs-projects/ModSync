@@ -1,5 +1,11 @@
 # ModSync
 
+| Side | Status | Notes |
+| --- | --- | --- |
+| **Server** | Optional | Only to keep a dedicated server's own `mods/` in line with the manifest. Clients sync without it (the manifest URL is set on the client). |
+| **Client** | Required | Syncing happens here, before the player joins. Clients without it can still join, they just don't sync. |
+| **Singleplayer** | Supported | Packs with singleplayer content can [sync at startup](#syncing-at-startup-for-packs-with-singleplayer-content). |
+
 A Minecraft mod that keeps a client's `mods/` folder in sync with what a server requires.
 The player joins, sees a diff of what will change, accepts it, and the files are swapped in
 after the game exits. A pack with singleplayer content can
